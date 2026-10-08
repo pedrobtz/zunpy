@@ -20,8 +20,14 @@ from R vectors, matrices, arrays, data frames and lists, without Python.
 
 ## Installation
 
-zunpy is not on CRAN yet. Its providers, zubin, zufast and zukomp, are
-installed from GitHub with it:
+Install the released version from CRAN:
+
+``` r
+
+install.packages("zunpy")
+```
+
+or the development version from GitHub:
 
 ``` r
 

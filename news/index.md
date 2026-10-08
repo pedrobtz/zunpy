@@ -1,6 +1,8 @@
 # Changelog
 
-## zunpy 0.0.0.9000
+## zunpy 0.1.0
+
+First release.
 
 - A vignette,
   [`vignette("zunpy")`](https://pedrobtz.github.io/zunpy/articles/zunpy.md):

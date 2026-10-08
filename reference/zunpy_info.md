@@ -23,7 +23,7 @@ copied whole rather than element by element.
 ``` r
 zunpy_info()
 #> $version
-#> [1] "0.0.0.9000"
+#> [1] "0.1.0"
 #> 
 #> $zubin
 #> [1] "0.0.0"
