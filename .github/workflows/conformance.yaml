@@ -44,6 +44,7 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: R writes, NumPy reads
         run: |
+          mkdir -p "$RUNNER_TEMP/lib"
           R CMD INSTALL --library="$RUNNER_TEMP/lib" .
           R_LIBS="$RUNNER_TEMP/lib" Rscript tools/conformance-write.R "$RUNNER_TEMP/rw"
           NUMPY=$(sed -n 's/^NUMPY = "\(.*\)"$/\1/p' tools/make-fixtures.py)
