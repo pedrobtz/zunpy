@@ -45,7 +45,14 @@ for the same array.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">npy_encode</span><span class="op">(</span><span class="va">x</span>, dtype <span class="op">=</span> <span class="cn">NULL</span>, order <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"F"</span>, <span class="st">"C"</span><span class="op">)</span>, na <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"error"</span>, <span class="st">"allow"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">npy_encode</span><span class="op">(</span></span>
+<span>  <span class="va">x</span>,</span>
+<span>  dtype <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  order <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"F"</span>, <span class="st">"C"</span><span class="op">)</span>,</span>
+<span>  na <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"error"</span>, <span class="st">"allow"</span><span class="op">)</span>,</span>
+<span>  encoding <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"UTF-8"</span>, <span class="st">"latin1"</span>, <span class="st">"bytes"</span><span class="op">)</span>,</span>
+<span>  unit <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"us"</span>, <span class="st">"ns"</span>, <span class="st">"ms"</span>, <span class="st">"s"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -53,14 +60,16 @@ for the same array.</p>
 
 
 <dl><dt id="arg-x">x<a class="anchor" aria-label="anchor" href="#arg-x"></a></dt>
-<dd><p>A logical, integer, double, complex or raw vector, matrix or
-array, or a <code><a href="https://bit64.r-lib.org/reference/bit64-package.html" class="external-link">bit64::integer64</a></code> vector.</p></dd>
+<dd><p>A logical, integer, double, complex, raw or character vector,
+matrix or array, a factor, a <code>Date</code>, <code>POSIXct</code> or <code>difftime</code> vector, or
+a <code><a href="https://bit64.r-lib.org/reference/bit64-package.html" class="external-link">bit64::integer64</a></code> vector.</p></dd>
 
 
 <dt id="arg-dtype">dtype<a class="anchor" aria-label="anchor" href="#arg-dtype"></a></dt>
 <dd><p><code>NULL</code> for the default of the R type, or a NumPy dtype
 string: <code>"|b1"</code>, <code>"|i1"</code>, <code>"&lt;i2"</code>, <code>"&lt;i4"</code>, <code>"&lt;i8"</code>, <code>"|u1"</code>, <code>"&lt;u2"</code>,
-<code>"&lt;u4"</code>, <code>"&lt;u8"</code>, <code>"&lt;f2"</code>, <code>"&lt;f4"</code>, <code>"&lt;f8"</code>, <code>"&lt;c8"</code> or <code>"&lt;c16"</code>.</p></dd>
+<code>"&lt;u4"</code>, <code>"&lt;u8"</code>, <code>"&lt;f2"</code>, <code>"&lt;f4"</code>, <code>"&lt;f8"</code>, <code>"&lt;c8"</code>, <code>"&lt;c16"</code>,
+<code>"&lt;U&lt;n&gt;"</code>, <code>"|S&lt;n&gt;"</code>, <code>"&lt;M8[&lt;unit&gt;]"</code> or <code>"&lt;m8[&lt;unit&gt;]"</code>.</p></dd>
 
 
 <dt id="arg-order">order<a class="anchor" aria-label="anchor" href="#arg-order"></a></dt>
@@ -69,6 +78,17 @@ string: <code>"|b1"</code>, <code>"|i1"</code>, <code>"&lt;i2"</code>, <code>"&l
 
 <dt id="arg-na">na<a class="anchor" aria-label="anchor" href="#arg-na"></a></dt>
 <dd><p><code>"error"</code> or <code>"allow"</code>; see Details.</p></dd>
+
+
+<dt id="arg-encoding">encoding<a class="anchor" aria-label="anchor" href="#arg-encoding"></a></dt>
+<dd><p>For <code>|S&lt;n&gt;</code> output: <code>"UTF-8"</code> writes each string's UTF-8
+bytes, <code>"latin1"</code> converts to Latin-1 first (a character with no
+Latin-1 form is an error), and <code>"bytes"</code> writes the bytes as they are.</p></dd>
+
+
+<dt id="arg-unit">unit<a class="anchor" aria-label="anchor" href="#arg-unit"></a></dt>
+<dd><p>The unit for <code>POSIXct</code>: <code>"us"</code> (the default), <code>"ns"</code>, <code>"ms"</code>
+or <code>"s"</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -79,15 +99,27 @@ string: <code>"|b1"</code>, <code>"|i1"</code>, <code>"&lt;i2"</code>, <code>"&l
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>By default the dtype follows the R type (see <code><a href="npy_dtype.html">npy_dtype()</a></code>): logical to
 <code>|b1</code>, integer to <code>&lt;i4</code>, double to <code>&lt;f8</code> (whole numbers too), complex to
-<code>&lt;c16</code>, raw to <code>|u1</code> and <code>integer64</code> to <code>&lt;i8</code>. <code>dtype</code> chooses another
-numeric dtype for one call: a value that does not fit it is an error
-naming its index, never a wrap or a rounding to an integer; floats round
-to nearest even. Multi-byte dtypes are always little-endian.</p>
+<code>&lt;c16</code>, raw to <code>|u1</code>, <code>integer64</code> to <code>&lt;i8</code>, character and factor (its
+labels) to <code>&lt;U&lt;n&gt;</code> with <code>n</code> the most code points of any value, <code>Date</code> to
+<code>&lt;M8[D]</code>, <code>POSIXct</code> to <code>&lt;M8[us]</code> (see <code>unit</code>) and <code>difftime</code> to <code>m8</code> in
+its units (<code>s</code>, <code>m</code>, <code>h</code>, <code>D</code> or <code>W</code>). An <code>integer64</code> that <code><a href="npy_decode.html">npy_decode()</a></code>
+returned for a datetime unit without an R class is written back as its
+<code>npy_dtype</code>.</p>
+<p><code>dtype</code> chooses another dtype for one call: a numeric one for a number,
+<code>"&lt;U&lt;n&gt;"</code> or <code>"|S&lt;n&gt;"</code> (or <code>"&lt;U"</code> and <code>"|S"</code> for the widest value) for a
+string, <code>"&lt;M8[s]"</code> and the like for a date-time. A value that does not
+fit is an error naming its index, never a wrap, a truncation or a
+rounding to an integer; floats round to nearest even. A date-time is
+written when its count in the unit reads back as the same double, and
+refused when it holds a finer fraction. Multi-byte dtypes are always
+little-endian.</p>
 <p><code>NA</code> has no place in most NumPy types. A logical <code>NA</code> is an error unless
 <code>na = "allow"</code>, which writes <code>False</code> with a warning; an integer <code>NA</code> is
 an error unless <code>na = "allow"</code>, which writes <code>-2147483648</code> into <code>&lt;i4</code>
 (what R reads back as <code>NA</code>) or NaN into a float. A double <code>NA</code> is written
-bit for bit into <code>&lt;f8</code>, so R reads it back as <code>NA</code> and NumPy sees a NaN.</p>
+bit for bit into <code>&lt;f8</code>, so R reads it back as <code>NA</code> and NumPy sees a NaN.
+A character <code>NA</code> is an error unless <code>na = "allow"</code>, which writes an
+empty string. A date-time <code>NA</code> is NaT.</p>
 <p>A matrix or array is written in R's own (Fortran) order with
 <code>fortran_order</code> set, which costs no copy; <code>order = "C"</code> writes C order
 for readers that need it. <code>dimnames</code> and names are dropped. A length-1

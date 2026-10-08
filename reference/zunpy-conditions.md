@@ -21,9 +21,10 @@ member, and `member` names it.
 
 - `zunpy_invalid_error`:
 
-  The input is well formed but inconsistent: the shape disagrees with
-  the data length, fields overlap, a `U` string holds a surrogate, or a
-  checksum does not match. Carries `offset`.
+  The input is well formed but inconsistent: record fields overlap or
+  share a name, a string is not valid in its encoding (a surrogate in
+  `U`, bytes that are not UTF-8 in `S`), or a checksum does not match.
+  Carries `offset`, and `index` for a value.
 
 - `zunpy_unsupported_type`:
 

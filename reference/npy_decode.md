@@ -12,6 +12,9 @@ npy_decode(
   order = c("R", "file"),
   int64 = c("double", "integer64"),
   na = c("error", "allow"),
+  strings = c("character", "raw"),
+  encoding = c("UTF-8", "latin1", "bytes"),
+  datetime = c("convert", "integer64"),
   max_size = 2 * 1024^3,
   max_header = 10000,
   max_dims = 32
@@ -38,6 +41,20 @@ npy_decode(
 
   `"error"` or `"allow"`: whether a value that is `NA` in R is refused.
 
+- strings:
+
+  `"character"` or `"raw"`, for `S<n>`.
+
+- encoding:
+
+  The encoding of `S<n>` bytes: `"UTF-8"` (validated), `"latin1"`
+  (converted to UTF-8) or `"bytes"` (left as bytes).
+
+- datetime:
+
+  `"convert"` to `Date`, `POSIXct` and `difftime`, or `"integer64"` for
+  the counts as they are.
+
 - max_size:
 
   The largest input accepted, in bytes.
@@ -62,8 +79,25 @@ double, or to `integer64` with `int64 = "integer64"`; `c8` and `c16` to
 complex. Every value is converted exactly or refused: an `i4` of `-2^31`
 is R's `NA_integer_`, so it is an error unless `na = "allow"`, and a
 64-bit integer beyond `2^53` in magnitude, which a double cannot hold
-exactly, is an error unless `int64 = "integer64"`. String, date-time,
-void and structured dtypes are not supported yet.
+exactly, is an error unless `int64 = "integer64"`. Structured dtypes are
+not supported yet.
+
+Strings: `S<n>` (bytes) and `U<n>` (code points) become character
+vectors in UTF-8, with the trailing NULs NumPy pads with removed. `S<n>`
+bytes are decoded as `encoding` says, and `strings = "raw"` returns each
+as a raw vector instead. A NUL inside a value cannot live in an R string
+and is an error. `V<n>` becomes a list of raw vectors.
+
+Dates and times: `M8[D]` becomes `Date`; `M8[s]`, `M8[ms]`, `M8[us]` and
+`M8[ns]` become `POSIXct` in UTC; `m8` becomes `difftime` in days,
+hours, minutes, weeks or seconds (`ms`, `us` and `ns` scaled to
+seconds). NaT is `NA`. A double cannot hold every nanosecond since 1970,
+so `M8[ns]` is the nearest double; `datetime = "integer64"` keeps the
+counts exactly. Units with no R class (`Y`, `M` and finer than `ns`) are
+returned as `integer64` counts either way. Such an `integer64` carries
+the dtype in its `npy_dtype` attribute, and
+[`npy_encode()`](https://pedrobtz.github.io/zunpy/reference/npy_encode.md)
+writes it back as that dtype.
 
 A 0-d array becomes a length-1 vector and a 1-d array a vector, both
 without `dim`. NumPy's default C order (last index fastest) is permuted

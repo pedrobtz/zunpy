@@ -50,6 +50,9 @@ compared with the bytes present, before anything is allocated.</p>
 <span>  order <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"R"</span>, <span class="st">"file"</span><span class="op">)</span>,</span>
 <span>  int64 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"double"</span>, <span class="st">"integer64"</span><span class="op">)</span>,</span>
 <span>  na <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"error"</span>, <span class="st">"allow"</span><span class="op">)</span>,</span>
+<span>  strings <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"character"</span>, <span class="st">"raw"</span><span class="op">)</span>,</span>
+<span>  encoding <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"UTF-8"</span>, <span class="st">"latin1"</span>, <span class="st">"bytes"</span><span class="op">)</span>,</span>
+<span>  datetime <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"convert"</span>, <span class="st">"integer64"</span><span class="op">)</span>,</span>
 <span>  max_size <span class="op">=</span> <span class="fl">2</span> <span class="op">*</span> <span class="fl">1024</span><span class="op">^</span><span class="fl">3</span>,</span>
 <span>  max_header <span class="op">=</span> <span class="fl">10000</span>,</span>
 <span>  max_dims <span class="op">=</span> <span class="fl">32</span></span>
@@ -79,6 +82,20 @@ useful) for <code>i8</code> and <code>u8</code>.</p></dd>
 refused.</p></dd>
 
 
+<dt id="arg-strings">strings<a class="anchor" aria-label="anchor" href="#arg-strings"></a></dt>
+<dd><p><code>"character"</code> or <code>"raw"</code>, for <code>S&lt;n&gt;</code>.</p></dd>
+
+
+<dt id="arg-encoding">encoding<a class="anchor" aria-label="anchor" href="#arg-encoding"></a></dt>
+<dd><p>The encoding of <code>S&lt;n&gt;</code> bytes: <code>"UTF-8"</code> (validated),
+<code>"latin1"</code> (converted to UTF-8) or <code>"bytes"</code> (left as bytes).</p></dd>
+
+
+<dt id="arg-datetime">datetime<a class="anchor" aria-label="anchor" href="#arg-datetime"></a></dt>
+<dd><p><code>"convert"</code> to <code>Date</code>, <code>POSIXct</code> and <code>difftime</code>, or
+<code>"integer64"</code> for the counts as they are.</p></dd>
+
+
 <dt id="arg-max-size">max_size<a class="anchor" aria-label="anchor" href="#arg-max-size"></a></dt>
 <dd><p>The largest input accepted, in bytes.</p></dd>
 
@@ -104,8 +121,22 @@ or to <code>integer64</code> with <code>int64 = "integer64"</code>; <code>c8</co
 Every value is converted exactly or refused: an <code>i4</code> of <code>-2^31</code> is R's
 <code>NA_integer_</code>, so it is an error unless <code>na = "allow"</code>, and a 64-bit
 integer beyond <code>2^53</code> in magnitude, which a double cannot hold exactly,
-is an error unless <code>int64 = "integer64"</code>. String, date-time, void and
-structured dtypes are not supported yet.</p>
+is an error unless <code>int64 = "integer64"</code>. Structured dtypes are not
+supported yet.</p>
+<p>Strings: <code>S&lt;n&gt;</code> (bytes) and <code>U&lt;n&gt;</code> (code points) become character
+vectors in UTF-8, with the trailing NULs NumPy pads with removed. <code>S&lt;n&gt;</code>
+bytes are decoded as <code>encoding</code> says, and <code>strings = "raw"</code> returns each
+as a raw vector instead. A NUL inside a value cannot live in an R string
+and is an error. <code>V&lt;n&gt;</code> becomes a list of raw vectors.</p>
+<p>Dates and times: <code>M8[D]</code> becomes <code>Date</code>; <code>M8[s]</code>, <code>M8[ms]</code>, <code>M8[us]</code> and
+<code>M8[ns]</code> become <code>POSIXct</code> in UTC; <code>m8</code> becomes <code>difftime</code> in days,
+hours, minutes, weeks or seconds (<code>ms</code>, <code>us</code> and <code>ns</code> scaled to
+seconds). NaT is <code>NA</code>. A double cannot hold every nanosecond since 1970,
+so <code>M8[ns]</code> is the nearest double; <code>datetime = "integer64"</code> keeps the
+counts exactly. Units with no R class (<code>Y</code>, <code>M</code> and finer than <code>ns</code>) are
+returned as <code>integer64</code> counts either way. Such an <code>integer64</code> carries
+the dtype in its <code>npy_dtype</code> attribute, and <code><a href="npy_encode.html">npy_encode()</a></code> writes it back
+as that dtype.</p>
 <p>A 0-d array becomes a length-1 vector and a 1-d array a vector, both
 without <code>dim</code>. NumPy's default C order (last index fastest) is permuted
 into R's column-major order, so that <code>a[i, j]</code> in R is <code>a[i-1, j-1]</code> in

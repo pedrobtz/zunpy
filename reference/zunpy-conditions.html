@@ -64,9 +64,9 @@ trailing data. Carries <code>offset</code>.</p></dd>
 
 <dt><code>zunpy_invalid_error</code></dt>
 <dd><p>The input is well formed but inconsistent:
-the shape disagrees with the data length, fields overlap, a <code>U</code>
-string holds a surrogate, or a checksum does not match. Carries
-<code>offset</code>.</p></dd>
+record fields overlap or share a name, a string is not valid in its
+encoding (a surrogate in <code>U</code>, bytes that are not UTF-8 in <code>S</code>), or a
+checksum does not match. Carries <code>offset</code>, and <code>index</code> for a value.</p></dd>
 
 <dt><code>zunpy_unsupported_type</code></dt>
 <dd><p>A dtype or an R value with no
