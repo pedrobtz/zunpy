@@ -2,16 +2,19 @@
 
 ## Authors
 
-- **First Last**. Author, maintainer.
+- **Pedro Baltazar**. Author, maintainer, copyright holder.
 
 ## Citation
 
-Last F (2026). *zunpy: What the Package Does (One Line, Title Case)*. R
+Source:
+[`DESCRIPTION`](https://github.com/pedrobtz/zunpy/blob/main/DESCRIPTION)
+
+Baltazar P (2026). *zunpy: Read and Write 'NumPy' Array Files*. R
 package version 0.0.0.9000, <https://pedrobtz.github.io/zunpy/>.
 
     @Manual{,
-      title = {zunpy: What the Package Does (One Line, Title Case)},
-      author = {First Last},
+      title = {zunpy: Read and Write 'NumPy' Array Files},
+      author = {Pedro Baltazar},
       year = {2026},
       note = {R package version 0.0.0.9000},
       url = {https://pedrobtz.github.io/zunpy/},
