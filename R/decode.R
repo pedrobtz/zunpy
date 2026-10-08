@@ -91,7 +91,25 @@ npy_decode <- function(x, order = c("R", "file"),
                      descr = res$descr, call = call)
   }
   znp_header_warnings(res, call)
+  if (is.na(res$descr)) {
+    return(znp_records(res$value, res$shape, int64, datetime))
+  }
   znp_classify(res$value, res$descr, int64, datetime)
+}
+
+# A structured array as a data frame (design section 6.3): one column per
+# field, or per element of a subarray field; one row per record, in R's
+# order; `npy_shape` when the array is not 1-d.
+znp_records <- function(value, shape, int64, datetime) {
+  cols <- Map(function(col, descr) znp_classify(col, descr, int64, datetime),
+              value[[1]], value[[3]])
+  names(cols) <- value[[2]]
+  n <- if (length(shape)) prod(shape) else 1
+  df <- structure(cols, class = "data.frame", row.names = c(NA_integer_, -n))
+  if (length(shape) != 1L) {
+    attr(df, "npy_shape") <- shape
+  }
+  df
 }
 
 # The R class a dtype reads as (design section 6.1, D7). value is the bare

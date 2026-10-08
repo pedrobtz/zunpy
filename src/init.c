@@ -11,6 +11,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"zunpy_header_check", (DL_FUNC) &zunpy_header_check, 2},
     {"zunpy_decode",       (DL_FUNC) &zunpy_decode,       3},
     {"zunpy_encode",       (DL_FUNC) &zunpy_encode,       4},
+    {"zunpy_encode_records", (DL_FUNC) &zunpy_encode_records, 6},
     {NULL, NULL, 0}
 };
 

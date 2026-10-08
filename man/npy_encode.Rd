@@ -15,11 +15,12 @@ npy_encode(
 }
 \arguments{
 \item{x}{A logical, integer, double, complex, raw or character vector,
-matrix or array, a factor, a \code{Date}, \code{POSIXct} or \code{difftime} vector, or
-a \code{bit64::integer64} vector.}
+matrix or array, a factor, a \code{Date}, \code{POSIXct} or \code{difftime} vector, a
+\code{bit64::integer64} vector, or a data frame of such columns.}
 
-\item{dtype}{\code{NULL} for the default of the R type, or a NumPy dtype
-string: \code{"|b1"}, \code{"|i1"}, \code{"<i2"}, \code{"<i4"}, \code{"<i8"}, \code{"|u1"}, \code{"<u2"},
+\item{dtype}{\code{NULL} for the default of the R type; for a data frame, a
+named character vector of dtypes for some of its columns; else a NumPy
+dtype string: \code{"|b1"}, \code{"|i1"}, \code{"<i2"}, \code{"<i4"}, \code{"<i8"}, \code{"|u1"}, \code{"<u2"},
 \code{"<u4"}, \code{"<u8"}, \code{"<f2"}, \code{"<f4"}, \code{"<f8"}, \code{"<c8"}, \code{"<c16"},
 \code{"<U<n>"}, \code{"|S<n>"}, \code{"<M8[<unit>]"} or \code{"<m8[<unit>]"}.}
 
@@ -68,6 +69,14 @@ an error unless \code{na = "allow"}, which writes \code{-2147483648} into \verb{
 bit for bit into \verb{<f8}, so R reads it back as \code{NA} and NumPy sees a NaN.
 A character \code{NA} is an error unless \code{na = "allow"}, which writes an
 empty string. A date-time \code{NA} is NaT.
+
+A data frame is written as a structured array (a NumPy record array):
+one field per column, named as the column and typed as the column would
+be on its own, packed in column order, one record per row. \code{dtype} may
+then be a named character vector giving the dtype of some columns. Row
+names are dropped. A data frame that \code{\link[=npy_decode]{npy_decode()}} made from an array of
+records with other than one dimension carries \code{npy_shape}, and is written
+back with that shape. Field names must be non-empty and unique.
 
 A matrix or array is written in R's own (Fortran) order with
 \code{fortran_order} set, which costs no copy; \code{order = "C"} writes C order

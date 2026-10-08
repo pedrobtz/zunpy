@@ -28,7 +28,7 @@ typedef enum {
     ZNP_BUILD_NA,               /* an NA with no place in the target */
     ZNP_BUILD_UNREPRESENTABLE,  /* a value or a dimension R cannot hold */
     ZNP_BUILD_INVALID,          /* a string that is not valid in its encoding */
-    ZNP_BUILD_NOT_YET           /* a dtype a later stage reads */
+    ZNP_BUILD_NOT_YET           /* unused since Stage 5; kept for the status table */
 } znp_build_status;
 
 static const char *build_status_name(znp_build_status st)
@@ -100,14 +100,13 @@ static int field_for(const znp_dtype *dt, const znp_opts *o, zb_field *f,
     return 1;
 }
 
-/* Converts n elements starting at element `first`, file order, into the
-   matching slots of out. */
-static zb_status convert(const uint8_t *data, size_t first, size_t n,
-                         const znp_dtype *dt, const zb_field *f,
-                         const znp_opts *o, SEXP out, size_t *bad)
+/* n numeric, boolean or complex elements `stride` bytes apart, from
+   element `first`, into the matching slots of out. */
+static zb_status convert(const uint8_t *base0, size_t first, size_t n,
+                         size_t stride, const zb_field *f, const znp_opts *o,
+                         SEXP out, size_t *bad)
 {
-    const uint8_t *base = data + first * dt->itemsize;
-    size_t stride = (size_t)dt->itemsize;
+    const uint8_t *base = base0 + first * stride;
     switch (TYPEOF(out)) {
     case LGLSXP:
         return zb_unpack_i32(base, n, stride, f, LOGICAL(out) + first, 1, bad);
@@ -115,7 +114,7 @@ static zb_status convert(const uint8_t *data, size_t first, size_t n,
         return zb_unpack_i32(base, n, stride, f, INTEGER(out) + first, o->na_allow, bad);
     case CPLXSXP: {
         Rcomplex *d = COMPLEX(out) + first;
-        size_t half = stride / 2;
+        size_t half = f->size / 2;
         int be = f->big_endian;
         for (size_t i = 0; i < n; i++) {
             const uint8_t *p = base + i * stride;
@@ -151,39 +150,61 @@ static zb_status convert(const uint8_t *data, size_t first, size_t n,
     }
 }
 
-/* S, U, V, M and m: the elements that are not one zubin field each. Sets
-   fault on a refusal and returns R_NilValue. */
-static SEXP build_other(const uint8_t *body, const znp_plan *plan,
-                        const znp_opts *o, znp_build_fault *fault)
+/* One column: n elements of dtype dt, `stride` bytes apart from base, as an
+   R vector (a list for S with strings = "raw" and for V). On a refusal,
+   fault is set and the return is R_NilValue. */
+static SEXP read_column(const uint8_t *base, size_t n, size_t stride,
+                        const znp_dtype *dt, const znp_opts *o,
+                        znp_build_fault *fault)
 {
-    const znp_dtype *dt = &plan->dtype;
-    size_t n = (size_t)plan->count, bad = 0;
+    zb_field f;
+    SEXPTYPE rtype;
+    size_t bad = 0;
     int status = 0;
     SEXP out;
+
+    if (field_for(dt, o, &f, &rtype)) {
+        out = PROTECT(Rf_allocVector(rtype, (R_xlen_t)n));
+        for (size_t first = 0; first < n; first += ZNP_CHUNK) {
+            size_t m = n - first < ZNP_CHUNK ? n - first : ZNP_CHUNK;
+            zb_status st = convert(base, first, m, stride, &f, o, out, &bad);
+            if (st != ZB_OK) {
+                fault->status = st == ZB_ERR_RANGE && rtype == INTSXP ? ZNP_BUILD_NA
+                              : st == ZB_ERR_NA ? ZNP_BUILD_NA
+                              : ZNP_BUILD_UNREPRESENTABLE;
+                fault->index = first + bad;
+                UNPROTECT(1);
+                return R_NilValue;
+            }
+            R_CheckUserInterrupt();
+        }
+        UNPROTECT(1);
+        return out;
+    }
+
     switch (dt->kind) {
     case 'S':
         if (o->strings_raw)
-            return znp_read_bytes(body, n, (size_t)dt->itemsize, 1);
-        out = znp_read_s(body, n, (size_t)dt->itemsize, o->encoding, &status, &bad);
+            return znp_read_bytes(base, n, stride, (size_t)dt->itemsize, 1);
+        out = znp_read_s(base, n, stride, (size_t)dt->itemsize, o->encoding, &status, &bad);
         break;
     case 'U':
-        out = znp_read_u(body, n, (size_t)dt->chars, dt->order == '>', &status, &bad);
+        out = znp_read_u(base, n, stride, (size_t)dt->chars, dt->order == '>', &status, &bad);
         break;
     case 'V':
-        return znp_read_bytes(body, n, (size_t)dt->itemsize, 0);
+        return znp_read_bytes(base, n, stride, (size_t)dt->itemsize, 0);
     default: { /* M, m */
         int64_t scale = o->datetime_raw ? 0 : znp_time_scale(dt->kind, dt->unit);
         out = PROTECT(Rf_allocVector(REALSXP, (R_xlen_t)n));
         if (scale == 0) {
             /* integer64: the counts as they are; NaT is NA_integer64_. */
-            zb_field f;
             memset(&f, 0, sizeof f);
             f.type = ZB_I64;
             f.count = 1;
             f.size = 8;
             f.big_endian = dt->order == '>';
-            zb_unpack_i64(body, n, 8, &f, (int64_t *)(void *)REAL(out), &bad);
-        } else if (znp_read_counts(body, n, dt->order == '>', scale, REAL(out), &bad))
+            zb_unpack_i64(base, n, stride, &f, (int64_t *)(void *)REAL(out), &bad);
+        } else if (znp_read_counts(base, n, stride, dt->order == '>', scale, REAL(out), &bad))
             status = 4;
         UNPROTECT(1);
         break;
@@ -227,20 +248,88 @@ static SEXP dim_attr(const uint64_t *shape, int k, int reverse)
     return dim;
 }
 
+/* The bare vectors and their descr strings, one per column, and the column
+   names: list(columns, names, descrs). A field with a subarray of m
+   elements gives m columns, name.1 to name.m, in C order (design 6.3);
+   padding gives none. */
+static SEXP build_records(const uint8_t *body, const znp_plan *plan,
+                          const znp_opts *o, znp_build_fault *fault)
+{
+    size_t n = (size_t)plan->count, rs = (size_t)plan->itemsize;
+    if (n > INT_MAX) {
+        /* A data frame's rows are an integer. */
+        fault->status = ZNP_BUILD_UNREPRESENTABLE;
+        fault->dim = 0;
+        return R_NilValue;
+    }
+    /* Rows in R's order: a C-order array of records with two or more
+       dimensions is permuted record by record into one temporary first. */
+    if (plan->ndim >= 2 && !plan->fortran_order && !o->order_file && n > 0) {
+        uint8_t *tmp = (uint8_t *)(void *)R_alloc(n, rs ? rs : 1);
+        znp_permute(body, tmp, rs, n, plan->shape, plan->ndim, 1);
+        body = tmp;
+    }
+
+    size_t ncol = 0;
+    for (int i = 0; i < plan->n_fields; i++) {
+        uint64_t m = 1;
+        for (int d = 0; d < plan->fields[i].ndim; d++)
+            m *= plan->fields[i].shape[d];
+        ncol += (size_t)m;
+    }
+    if (ncol > INT_MAX) {
+        fault->status = ZNP_BUILD_UNREPRESENTABLE;
+        fault->dim = 0;
+        return R_NilValue;
+    }
+    SEXP cols = PROTECT(Rf_allocVector(VECSXP, (R_xlen_t)ncol));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, (R_xlen_t)ncol));
+    SEXP descrs = PROTECT(Rf_allocVector(STRSXP, (R_xlen_t)ncol));
+    size_t c = 0;
+    for (int i = 0; i < plan->n_fields; i++) {
+        const znp_field *f = &plan->fields[i];
+        uint64_t m = 1;
+        for (int d = 0; d < f->ndim; d++)
+            m *= f->shape[d];
+        SEXP descr = PROTECT(znp_dtype_sexp(&f->dtype));
+        for (uint64_t e = 0; e < m; e++, c++) {
+            const uint8_t *base = body + f->offset + e * f->dtype.itemsize;
+            SEXP col = read_column(base, n, rs, &f->dtype, o, fault);
+            if (fault->status != ZNP_BUILD_OK) {
+                fault->dim = -1;
+                UNPROTECT(4);
+                return R_NilValue;
+            }
+            SET_VECTOR_ELT(cols, (R_xlen_t)c, col);
+            SET_STRING_ELT(descrs, (R_xlen_t)c, STRING_ELT(descr, 0));
+            if (f->ndim == 0)
+                SET_STRING_ELT(names, (R_xlen_t)c,
+                               Rf_mkCharLenCE(f->name, (int)f->name_len, CE_UTF8));
+            else {
+                char *buf = R_alloc(f->name_len + 24, 1);
+                memcpy(buf, f->name, f->name_len);
+                int k = snprintf(buf + f->name_len, 24, ".%llu", (unsigned long long)e + 1);
+                SET_STRING_ELT(names, (R_xlen_t)c,
+                               Rf_mkCharLenCE(buf, (int)f->name_len + k, CE_UTF8));
+            }
+        }
+        UNPROTECT(1);
+    }
+    SEXP out = PROTECT(Rf_allocVector(VECSXP, 3));
+    SET_VECTOR_ELT(out, 0, cols);
+    SET_VECTOR_ELT(out, 1, names);
+    SET_VECTOR_ELT(out, 2, descrs);
+    UNPROTECT(4);
+    return out;
+}
+
 static SEXP build(const uint8_t *data, const znp_plan *plan, const znp_opts *o,
                   znp_build_fault *fault)
 {
-    zb_field f;
-    SEXPTYPE rtype;
     fault->status = ZNP_BUILD_OK;
     fault->index = 0;
     fault->dim = -1;
 
-    if (plan->structured) {
-        fault->status = ZNP_BUILD_NOT_YET;
-        return R_NilValue;
-    }
-    int simple = field_for(&plan->dtype, o, &f, &rtype);
     /* R's dim is integer; a vector may be long (design 6.2). */
     if (plan->ndim >= 2)
         for (int j = 0; j < plan->ndim; j++)
@@ -251,34 +340,20 @@ static SEXP build(const uint8_t *data, const znp_plan *plan, const znp_opts *o,
             }
     if (plan->count > (uint64_t)R_XLEN_T_MAX) {
         fault->status = ZNP_BUILD_UNREPRESENTABLE;
+        fault->dim = 0;
         return R_NilValue;
     }
 
-    size_t n = (size_t)plan->count;
     const uint8_t *body = data + plan->data_offset;
-    SEXP out;
-    if (!simple) {
-        out = build_other(body, plan, o, fault);
-        if (fault->status != ZNP_BUILD_OK)
-            return R_NilValue;
-        PROTECT(out);
-        rtype = TYPEOF(out);
-    } else
-        out = PROTECT(Rf_allocVector(rtype, (R_xlen_t)n));
-    for (size_t first = 0; simple && first < n; first += ZNP_CHUNK) {
-        size_t m = n - first < ZNP_CHUNK ? n - first : ZNP_CHUNK;
-        size_t bad = 0;
-        zb_status st = convert(body, first, m, &plan->dtype, &f, o, out, &bad);
-        if (st != ZB_OK) {
-            fault->status = st == ZB_ERR_RANGE && rtype == INTSXP ? ZNP_BUILD_NA
-                          : st == ZB_ERR_NA ? ZNP_BUILD_NA
-                          : ZNP_BUILD_UNREPRESENTABLE;
-            fault->index = first + bad;
-            UNPROTECT(1);
-            return R_NilValue;
-        }
-        R_CheckUserInterrupt();
-    }
+    if (plan->structured)
+        return build_records(body, plan, o, fault);
+
+    size_t n = (size_t)plan->count;
+    SEXP out = read_column(body, n, (size_t)plan->itemsize, &plan->dtype, o, fault);
+    if (fault->status != ZNP_BUILD_OK)
+        return R_NilValue;
+    PROTECT(out);
+    SEXPTYPE rtype = TYPEOF(out);
 
     int k = plan->ndim;
     if (k >= 2) {
@@ -304,9 +379,12 @@ static SEXP build(const uint8_t *data, const znp_plan *plan, const znp_opts *o,
     return out;
 }
 
-/* opts: c(order_file, as_integer64, na_allow). Returns list(status, offset,
-   index, value, descr, native_order, align64, dim); status is a check or a
-   build status name, and R raises. */
+/* opts: c(order_file, as_integer64, na_allow, strings_raw, encoding,
+   datetime_raw). Returns list(status, offset, index, value, descr,
+   native_order, align64, dim, shape); status is a check or a build status
+   name, and R raises. For a structured dtype, value is list(columns, names,
+   descrs) and R makes the data frame; shape is in R's order (reversed for
+   a C-order file read with order = "file"). */
 SEXP zunpy_decode(SEXP x, SEXP limits, SEXP opts)
 {
     znp_limits lim;
@@ -330,11 +408,11 @@ SEXP zunpy_decode(SEXP x, SEXP limits, SEXP opts)
         st = znp_check(data, size, &lim, scratch, need, &plan, &cf);
     }
 
-    SEXP out = PROTECT(Rf_allocVector(VECSXP, 8));
+    SEXP out = PROTECT(Rf_allocVector(VECSXP, 9));
     const char *names[] = {"status", "offset", "index", "value", "descr",
-                           "native_order", "align64", "dim"};
-    SEXP nm = PROTECT(Rf_allocVector(STRSXP, 8));
-    for (int i = 0; i < 8; i++)
+                           "native_order", "align64", "dim", "shape"};
+    SEXP nm = PROTECT(Rf_allocVector(STRSXP, 9));
+    for (int i = 0; i < 9; i++)
         SET_STRING_ELT(nm, i, Rf_mkChar(names[i]));
     Rf_setAttrib(out, R_NamesSymbol, nm);
 
@@ -348,6 +426,12 @@ SEXP zunpy_decode(SEXP x, SEXP limits, SEXP opts)
     SET_VECTOR_ELT(out, 4, znp_descr_sexp(&plan));
     SET_VECTOR_ELT(out, 5, Rf_ScalarLogical(plan.native_order));
     SET_VECTOR_ELT(out, 6, Rf_ScalarLogical(plan.align64));
+    SEXP shape = PROTECT(Rf_allocVector(REALSXP, plan.ndim));
+    for (int j = 0; j < plan.ndim; j++)
+        REAL(shape)[j] = (double)plan.shape[(o.order_file && !plan.fortran_order)
+                                            ? plan.ndim - 1 - j : j];
+    SET_VECTOR_ELT(out, 8, shape);
+    UNPROTECT(1);
 
     znp_build_fault bf;
     SEXP value = PROTECT(build(data, &plan, &o, &bf));

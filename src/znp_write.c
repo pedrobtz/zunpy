@@ -44,12 +44,14 @@ static const char *write_status_name(znp_write_status st)
     return "ZNP_ERR_UNKNOWN";
 }
 
-/* The dict, exactly as NumPy writes it, into buf; returns its length. */
+/* The dict, exactly as NumPy writes it, into buf (cap bytes, enough for
+   descr plus 64 * 24 + 128); returns its length. descr is the repr() of
+   NumPy's descr: a quoted string, or the list of a structured dtype. */
 static size_t format_dict(char *buf, size_t cap, const char *descr,
                           int fortran, const uint64_t *shape, int k)
 {
     size_t n = 0;
-    n += (size_t)snprintf(buf + n, cap - n, "{'descr': '%s', 'fortran_order': %s, 'shape': (",
+    n += (size_t)snprintf(buf + n, cap - n, "{'descr': %s, 'fortran_order': %s, 'shape': (",
                           descr, fortran ? "True" : "False");
     for (int j = 0; j < k; j++)
         n += (size_t)snprintf(buf + n, cap - n, j ? ", %llu" : "%llu",
@@ -63,6 +65,58 @@ static size_t format_dict(char *buf, size_t cap, const char *descr,
             buf[n++] = ' ';
     }
     return n;
+}
+
+/* The whole file around a dict: magic, version, length, the dict, padding
+   as _wrap_header() pads it, and room for data_bytes of data, which the
+   caller fills from *data. The version is 1.0 while the length fits two
+   bytes, else 2.0, and 3.0 when the dict needs UTF-8 (a field name with no
+   Latin-1 form). dict is UTF-8; versions 1 and 2 store it as Latin-1.
+   Returns R_NilValue when the file would not fit a raw vector. */
+static SEXP npy_frame(const char *dict, size_t dlen, int need_utf8,
+                      size_t data_bytes, uint8_t **data)
+{
+    /* Latin-1 bytes of the dict, for versions 1 and 2. */
+    char *text = (char *)dict;
+    size_t tlen = dlen;
+    if (!need_utf8) {
+        text = R_alloc(dlen ? dlen : 1, 1);
+        tlen = 0;
+        for (size_t i = 0; i < dlen; i++) {
+            unsigned char c = (unsigned char)dict[i];
+            if (c >= 0xC0 && i + 1 < dlen) {      /* U+0080..U+00FF: two bytes */
+                text[tlen++] = (char)(((c & 0x1F) << 6) | ((unsigned char)dict[i + 1] & 0x3F));
+                i++;
+            } else
+                text[tlen++] = (char)c;
+        }
+    }
+    size_t hlen = tlen + 1, prefix = need_utf8 ? 12 : 10;
+    size_t pad = ZNP_ALIGN - ((prefix + hlen) % ZNP_ALIGN);
+    int major = need_utf8 ? 3 : 1;
+    if (!need_utf8 && hlen + pad > 65535) {
+        major = 2;
+        prefix = 12;
+        pad = ZNP_ALIGN - ((prefix + hlen) % ZNP_ALIGN);
+    }
+    size_t head = prefix + hlen + pad;
+    if (data_bytes > (size_t)R_XLEN_T_MAX - head)
+        return R_NilValue;
+    SEXP raw = Rf_allocVector(RAWSXP, (R_xlen_t)(head + data_bytes));
+    uint8_t *p = RAW(raw);
+    static const uint8_t magic[6] = {0x93, 'N', 'U', 'M', 'P', 'Y'};
+    memcpy(p, magic, 6);
+    p[6] = (uint8_t)major;
+    p[7] = 0;
+    if (major == 1)
+        zb_wr_u16le(p + 8, (uint16_t)(hlen + pad));
+    else
+        zb_wr_u32le(p + 8, (uint32_t)(hlen + pad));
+    memcpy(p + prefix, text, tlen);
+    memset(p + prefix + tlen, ' ', pad);
+    p[head - 1] = '\n';
+    *data = p + head;
+    return raw;
 }
 
 typedef struct {
@@ -92,16 +146,16 @@ static zb_field target_field(const znp_target *t)
     return f;
 }
 
-/* Packs x, in R's order, into dst at `width` bytes an element. *replaced
-   counts logical NAs written as False under na = "allow". */
-static zb_status pack(SEXP x, const znp_target *t, uint8_t *dst, size_t *bad,
-                      R_xlen_t *replaced)
+/* Packs x, in R's order, into dst, one element every `stride` bytes.
+   *replaced counts logical NAs written as False under na = "allow". */
+static zb_status pack(SEXP x, const znp_target *t, uint8_t *dst, size_t stride,
+                      size_t *bad, R_xlen_t *replaced)
 {
-    size_t n = (size_t)XLENGTH(x), w = (size_t)t->width;
+    size_t n = (size_t)XLENGTH(x), w = stride;
     zb_field f = target_field(t);
     *replaced = 0;
     if (t->kind == 'U' || t->kind == 'S') {
-        int st = znp_write_text(x, dst, (size_t)t->width, t->kind == 'U', bad);
+        int st = znp_write_text(x, dst, stride, (size_t)t->width, t->kind == 'U', bad);
         return st == 0 ? ZB_OK : st == 1 ? ZB_ERR_RANGE : ZB_ERR_INVALID;
     }
     if (t->kind == 'M' || t->kind == 'm') {
@@ -109,18 +163,18 @@ static zb_status pack(SEXP x, const znp_target *t, uint8_t *dst, size_t *bad,
             /* Counts as they are; NA_integer64_ is NaT. */
             f.type = ZB_I64;
             f.size = 8;
-            return zb_pack_i64(dst, n, 8, &f, (const int64_t *)(const void *)REAL(x), 1, bad);
+            return zb_pack_i64(dst, n, stride, &f, (const int64_t *)(const void *)REAL(x), 1, bad);
         }
-        return znp_write_counts(REAL(x), n, t->scale, dst, bad) ? ZB_ERR_RANGE : ZB_OK;
+        return znp_write_counts(REAL(x), n, t->scale, dst, stride, bad) ? ZB_ERR_RANGE : ZB_OK;
     }
     switch (TYPEOF(x)) {
     case RAWSXP:
-        if (n)
-            memcpy(dst, RAW(x), n);
+        for (size_t i = 0; i < n; i++)
+            dst[i * stride] = RAW(x)[i];
         return ZB_OK;
     case CPLXSXP: {
         const Rcomplex *s = COMPLEX(x);
-        size_t half = w / 2;
+        size_t half = (size_t)t->width / 2;
         for (size_t i = 0; i < n; i++) {
             uint8_t *p = dst + i * w;
             if (f.type == ZB_F32) {
@@ -168,6 +222,52 @@ static zb_status pack(SEXP x, const znp_target *t, uint8_t *dst, size_t *bad,
     }
 }
 
+/* The dtype string of a target, as NumPy writes it. */
+static void format_descr(const znp_target *t, char *buf, size_t cap)
+{
+    if (t->kind == 'U')
+        snprintf(buf, cap, "'<U%d'", t->width);
+    else if (t->kind == 'S')
+        snprintf(buf, cap, "'|S%d'", t->width);
+    else if (t->kind == 'M' || t->kind == 'm')
+        snprintf(buf, cap, "'<%c8[%s]'", t->kind, t->unit);
+    else
+        snprintf(buf, cap, "'%c%c%d'", t->width == 1 && t->kind != 'c' ? '|' : '<',
+                 t->kind, t->width);
+}
+
+/* Bytes per element of a target. */
+static size_t item_width(const znp_target *t)
+{
+    if (t->kind == 'U')
+        return 4 * (size_t)t->width;
+    if (t->kind == 'M' || t->kind == 'm')
+        return 8;
+    return (size_t)t->width;
+}
+
+static SEXP result_list(void)
+{
+    SEXP out = PROTECT(Rf_allocVector(VECSXP, 5));
+    SEXP nm = PROTECT(Rf_allocVector(STRSXP, 5));
+    const char *names[] = {"status", "index", "value", "replaced", "column"};
+    for (int i = 0; i < 5; i++)
+        SET_STRING_ELT(nm, i, Rf_mkChar(names[i]));
+    Rf_setAttrib(out, R_NamesSymbol, nm);
+    UNPROTECT(2);
+    return out;
+}
+
+/* A refused value: status, its 1-based index, and the 1-based column. */
+static void set_fault(SEXP out, zb_status st, size_t bad, int column)
+{
+    znp_write_status ws = st == ZB_ERR_NA ? ZNP_WRITE_NA
+                        : st == ZB_ERR_INVALID ? ZNP_WRITE_INVALID : ZNP_WRITE_RANGE;
+    SET_VECTOR_ELT(out, 0, Rf_mkString(write_status_name(ws)));
+    SET_VECTOR_ELT(out, 1, Rf_ScalarReal((double)bad + 1));
+    SET_VECTOR_ELT(out, 4, Rf_ScalarInteger(column >= 0 ? column + 1 : NA_INTEGER));
+}
+
 /* spec: list(kind, width, unit, scale); shape: R's dims as doubles (the
    logical shape); opts: c(order_c, na_allow, is_int64). Returns
    list(status, index, value, replaced). */
@@ -207,70 +307,29 @@ SEXP zunpy_encode(SEXP x, SEXP spec, SEXP shape_r, SEXP opts)
             wid = (size_t)INT_MAX / 4;
         t.width = wid > 0 ? (int)wid : 1;
     }
-    char descr[32];
-    if (t.kind == 'U')
-        snprintf(descr, sizeof descr, "<U%d", t.width);
-    else if (t.kind == 'S')
-        snprintf(descr, sizeof descr, "|S%d", t.width);
-    else if (t.kind == 'M' || t.kind == 'm')
-        snprintf(descr, sizeof descr, "<%c8[%s]", t.kind, t.unit);
-    else
-        snprintf(descr, sizeof descr, "%c%c%d", t.width == 1 && t.kind != 'c' ? '|' : '<',
-                 t.kind, t.width);
-
+    char descr[40];
+    format_descr(&t, descr, sizeof descr);
     char dict[ZNP_MAX_DIMS_CAP * 24 + 256];
     size_t dlen = format_dict(dict, sizeof dict, descr, fortran, shape, k);
 
-    /* _wrap_header(): version 1.0 while the length fits two bytes. */
-    size_t hlen = dlen + 1, prefix = 10;
-    size_t pad = ZNP_ALIGN - ((prefix + hlen) % ZNP_ALIGN);
-    int major = 1;
-    if (hlen + pad > 65535) {
-        major = 2;
-        prefix = 12;
-        pad = ZNP_ALIGN - ((prefix + hlen) % ZNP_ALIGN);
-    }
-    size_t head = prefix + hlen + pad;
-
-    SEXP out = PROTECT(Rf_allocVector(VECSXP, 4));
-    SEXP nm = PROTECT(Rf_allocVector(STRSXP, 4));
-    const char *names[] = {"status", "index", "value", "replaced"};
-    for (int i = 0; i < 4; i++)
-        SET_STRING_ELT(nm, i, Rf_mkChar(names[i]));
-    Rf_setAttrib(out, R_NamesSymbol, nm);
-
-    size_t w = t.kind == 'U' ? 4 * (size_t)t.width
-             : (t.kind == 'M' || t.kind == 'm') ? 8 : (size_t)t.width;
-    if (w > 0 && n > ((size_t)R_XLEN_T_MAX - head) / w) {
+    SEXP out = PROTECT(result_list());
+    size_t w = item_width(&t);
+    uint8_t *data;
+    SEXP raw = (w > 0 && n > (size_t)R_XLEN_T_MAX / w) ? R_NilValue
+             : npy_frame(dict, dlen, 0, n * w, &data);
+    if (raw == R_NilValue) {
         SET_VECTOR_ELT(out, 0, Rf_mkString(write_status_name(ZNP_WRITE_TOO_LARGE)));
-        UNPROTECT(2);
+        UNPROTECT(1);
         return out;
     }
-    SEXP raw = PROTECT(Rf_allocVector(RAWSXP, (R_xlen_t)(head + n * w)));
-    uint8_t *p = RAW(raw);
-    static const uint8_t magic[6] = {0x93, 'N', 'U', 'M', 'P', 'Y'};
-    memcpy(p, magic, 6);
-    p[6] = (uint8_t)major;
-    p[7] = 0;
-    if (major == 1)
-        zb_wr_u16le(p + 8, (uint16_t)(hlen + pad));
-    else
-        zb_wr_u32le(p + 8, (uint32_t)(hlen + pad));
-    memcpy(p + prefix, dict, dlen);
-    memset(p + prefix + dlen, ' ', pad);
-    p[head - 1] = '\n';
-
-    uint8_t *data = p + head;
+    PROTECT(raw);
     uint8_t *into = permute ? (uint8_t *)(void *)R_alloc(n, w) : data;
     size_t bad = 0;
     R_xlen_t replaced = 0;
-    zb_status st = pack(x, &t, into, &bad, &replaced);
+    zb_status st = pack(x, &t, into, w, &bad, &replaced);
     if (st != ZB_OK) {
-        znp_write_status ws = st == ZB_ERR_NA ? ZNP_WRITE_NA
-                            : st == ZB_ERR_INVALID ? ZNP_WRITE_INVALID : ZNP_WRITE_RANGE;
-        SET_VECTOR_ELT(out, 0, Rf_mkString(write_status_name(ws)));
-        SET_VECTOR_ELT(out, 1, Rf_ScalarReal((double)bad + 1));
-        UNPROTECT(3);
+        set_fault(out, st, bad, -1);
+        UNPROTECT(2);
         return out;
     }
     if (permute)
@@ -279,6 +338,151 @@ SEXP zunpy_encode(SEXP x, SEXP spec, SEXP shape_r, SEXP opts)
     SET_VECTOR_ELT(out, 0, Rf_mkString(write_status_name(ZNP_WRITE_OK)));
     SET_VECTOR_ELT(out, 2, raw);
     SET_VECTOR_ELT(out, 3, Rf_ScalarReal((double)replaced));
-    UNPROTECT(3);
+    UNPROTECT(2);
+    return out;
+}
+
+/* Python's repr() of a field name, appended to buf: single quotes unless
+   the name holds ' and no ", backslash escapes for the quote, backslash,
+   tab, newline and carriage return, \xhh for other control characters and
+   for U+007F..U+00A0 and U+00AD, and every other character as it is. For
+   names with unusual non-printing characters past U+00FF, NumPy's own
+   escapes may differ (design 7.3). Returns the new length; *non_latin1 is
+   set when a character is past U+00FF. */
+static size_t repr_name(char *buf, size_t n, const char *s, size_t len, int *non_latin1)
+{
+    char q = (memchr(s, '\'', len) && !memchr(s, '"', len)) ? '"' : '\'';
+    buf[n++] = q;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        uint32_t cp = c;
+        size_t extra = 0;
+        if (c >= 0xF0) { cp = c & 0x07; extra = 3; }
+        else if (c >= 0xE0) { cp = c & 0x0F; extra = 2; }
+        else if (c >= 0xC0) { cp = c & 0x1F; extra = 1; }
+        for (size_t k = 1; k <= extra && i + k < len; k++)
+            cp = (cp << 6) | ((unsigned char)s[i + k] & 0x3F);
+        if (cp > 0xFF)
+            *non_latin1 = 1;
+        if (cp == (uint32_t)q || cp == '\\') {
+            buf[n++] = '\\';
+            buf[n++] = (char)cp;
+        } else if (cp == '\t' || cp == '\n' || cp == '\r') {
+            buf[n++] = '\\';
+            buf[n++] = cp == '\t' ? 't' : cp == '\n' ? 'n' : 'r';
+        } else if (cp < 0x20 || (cp >= 0x7F && cp <= 0xA0) || cp == 0xAD) {
+            n += (size_t)snprintf(buf + n, 5, "\\x%02x", (unsigned)cp);
+        } else {
+            memcpy(buf + n, s + i, extra + 1);
+            n += extra + 1;
+        }
+        i += extra;
+    }
+    buf[n++] = q;
+    return n;
+}
+
+/* A data frame as a structured array (design 7.3): one field per column,
+   packed, in column order. cols are bare vectors; specs as for
+   zunpy_encode(); names are the column names in UTF-8; shape is the
+   array's shape in R's order (nrow, or npy_shape); opts: c(order_c,
+   na_allow), and is_int64 per column in int64s. Returns list(status,
+   index, value, replaced, column). */
+SEXP zunpy_encode_records(SEXP cols, SEXP specs, SEXP names, SEXP shape_r,
+                          SEXP opts, SEXP int64s)
+{
+    int ncol = (int)XLENGTH(cols);
+    int order_c = INTEGER(opts)[0];
+    znp_target *t = (znp_target *)(void *)R_alloc(ncol ? (size_t)ncol : 1, sizeof(znp_target));
+    size_t *off = (size_t *)(void *)R_alloc(ncol ? (size_t)ncol : 1, sizeof(size_t));
+    size_t rs = 0, need = 64;
+    for (int c = 0; c < ncol; c++) {
+        SEXP spec = VECTOR_ELT(specs, c);
+        memset(&t[c], 0, sizeof t[c]);
+        t[c].kind = CHAR(STRING_ELT(VECTOR_ELT(spec, 0), 0))[0];
+        t[c].width = INTEGER(VECTOR_ELT(spec, 1))[0];
+        snprintf(t[c].unit, sizeof t[c].unit, "%s", CHAR(STRING_ELT(VECTOR_ELT(spec, 2), 0)));
+        t[c].scale = (int64_t)REAL(VECTOR_ELT(spec, 3))[0];
+        t[c].na_allow = INTEGER(opts)[1];
+        t[c].is_int64 = LOGICAL(int64s)[c];
+        if ((t[c].kind == 'U' || t[c].kind == 'S') && t[c].width < 0) {
+            size_t wid = znp_text_width(VECTOR_ELT(cols, c), t[c].kind == 'U');
+            if (wid > (size_t)INT_MAX / 4)
+                wid = (size_t)INT_MAX / 4;
+            t[c].width = wid > 0 ? (int)wid : 1;
+        }
+        off[c] = rs;
+        rs += item_width(&t[c]);
+        /* repr() of a name: at most 4 bytes per byte, quotes, the descr */
+        need += 4 * (size_t)LENGTH(STRING_ELT(names, c)) + 64;
+    }
+
+    int k = (int)XLENGTH(shape_r);
+    uint64_t shape[ZNP_MAX_DIMS_CAP];
+    int nontrivial = 0;
+    size_t n = 1;
+    for (int j = 0; j < k; j++) {
+        shape[j] = (uint64_t)REAL(shape_r)[j];
+        nontrivial += shape[j] > 1;
+        n *= (size_t)shape[j];
+    }
+    int layout_matters = k >= 2 && n > 0 && nontrivial >= 2;
+    int fortran = layout_matters && !order_c;
+    int permute = layout_matters && order_c;
+
+    /* [('a', '<i4'), ('b', '<f8')], as repr(dtype.descr) */
+    char *descr = R_alloc(need, 1);
+    size_t dn = 0;
+    int non_latin1 = 0;
+    descr[dn++] = '[';
+    for (int c = 0; c < ncol; c++) {
+        SEXP nm = STRING_ELT(names, c);
+        if (c) {
+            descr[dn++] = ',';
+            descr[dn++] = ' ';
+        }
+        descr[dn++] = '(';
+        dn = repr_name(descr, dn, CHAR(nm), (size_t)LENGTH(nm), &non_latin1);
+        char d[40];
+        format_descr(&t[c], d, sizeof d);
+        dn += (size_t)snprintf(descr + dn, need - dn, ", %s)", d);
+    }
+    descr[dn++] = ']';
+    descr[dn] = '\0';
+
+    size_t cap = dn + ZNP_MAX_DIMS_CAP * 24 + 256;
+    char *dict = R_alloc(cap, 1);
+    size_t dlen = format_dict(dict, cap, descr, fortran, shape, k);
+
+    SEXP out = PROTECT(result_list());
+    uint8_t *data;
+    SEXP raw = (rs > 0 && n > (size_t)R_XLEN_T_MAX / rs) ? R_NilValue
+             : npy_frame(dict, dlen, non_latin1, n * rs, &data);
+    if (raw == R_NilValue) {
+        SET_VECTOR_ELT(out, 0, Rf_mkString(write_status_name(ZNP_WRITE_TOO_LARGE)));
+        UNPROTECT(1);
+        return out;
+    }
+    PROTECT(raw);
+    uint8_t *into = permute ? (uint8_t *)(void *)R_alloc(n, rs) : data;
+    R_xlen_t replaced = 0;
+    for (int c = 0; c < ncol; c++) {
+        size_t bad = 0;
+        R_xlen_t rep = 0;
+        zb_status st = pack(VECTOR_ELT(cols, c), &t[c], into + off[c], rs, &bad, &rep);
+        if (st != ZB_OK) {
+            set_fault(out, st, bad, c);
+            UNPROTECT(2);
+            return out;
+        }
+        replaced += rep;
+    }
+    if (permute)
+        znp_permute(into, data, rs, n, shape, k, 0);
+
+    SET_VECTOR_ELT(out, 0, Rf_mkString(write_status_name(ZNP_WRITE_OK)));
+    SET_VECTOR_ELT(out, 2, raw);
+    SET_VECTOR_ELT(out, 3, Rf_ScalarReal((double)replaced));
+    UNPROTECT(2);
     return out;
 }

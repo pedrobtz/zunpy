@@ -254,7 +254,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 ## Stage 5 — Structured dtypes · M
 
-**Status:** not started.
+**Status:** done 2026-10-08 ([#8](https://github.com/pedrobtz/zunpy/issues/8)).
 
 **Goal:** record arrays become data frames and back, through zubin layouts.
 
@@ -272,6 +272,15 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 - No `zubin_error` escapes zunpy.
 
 **Not this stage:** nested structured fields (§2).
+
+**What actually happened**
+
+- Records are read and written in C, not through zubin layout spec strings: the build phase reads any element type at any stride (`read_column()`), so a spec would only be parsed back into the fields zunpy already has. The text, time and pack functions gained a stride for this (design §6.3, §7.3).
+- 10 structured fixtures from NumPy: plain, big-endian, subarrays (1-d and 2-d), aligned with padding, titles, a 2-d array in both orders, a Latin-1 and a non-Latin-1 field name (version 3.0), and no records. The MANIFEST records them as one segment per R column.
+- Writing a data frame matches NumPy byte for byte when the fields' dtypes are given (`dtype` as a named vector); field names are written as Python's `repr()` writes them, and a version 1.0 header stores Latin-1 names as Latin-1.
+- The two Stage 2 guards (`itemsize`, `columns`) were what made the subarray expansion safe: a header can ask for at most `max_fields` columns.
+- `conformance-write.R` writes a data frame too; `np.load()` reads it, Latin-1 field name included.
+- Lossy, and recorded in design §7.4: titles, padding, subarray shapes, and fields' dtypes beyond what the R column type implies.
 
 ---
 

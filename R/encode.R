@@ -30,16 +30,25 @@
 #' A character `NA` is an error unless `na = "allow"`, which writes an
 #' empty string. A date-time `NA` is NaT.
 #'
+#' A data frame is written as a structured array (a NumPy record array):
+#' one field per column, named as the column and typed as the column would
+#' be on its own, packed in column order, one record per row. `dtype` may
+#' then be a named character vector giving the dtype of some columns. Row
+#' names are dropped. A data frame that [npy_decode()] made from an array of
+#' records with other than one dimension carries `npy_shape`, and is written
+#' back with that shape. Field names must be non-empty and unique.
+#'
 #' A matrix or array is written in R's own (Fortran) order with
 #' `fortran_order` set, which costs no copy; `order = "C"` writes C order
 #' for readers that need it. `dimnames` and names are dropped. A length-1
 #' vector is a 1-d array of one element: R has no 0-d array.
 #'
 #' @param x A logical, integer, double, complex, raw or character vector,
-#'   matrix or array, a factor, a `Date`, `POSIXct` or `difftime` vector, or
-#'   a `bit64::integer64` vector.
-#' @param dtype `NULL` for the default of the R type, or a NumPy dtype
-#'   string: `"|b1"`, `"|i1"`, `"<i2"`, `"<i4"`, `"<i8"`, `"|u1"`, `"<u2"`,
+#'   matrix or array, a factor, a `Date`, `POSIXct` or `difftime` vector, a
+#'   `bit64::integer64` vector, or a data frame of such columns.
+#' @param dtype `NULL` for the default of the R type; for a data frame, a
+#'   named character vector of dtypes for some of its columns; else a NumPy
+#'   dtype string: `"|b1"`, `"|i1"`, `"<i2"`, `"<i4"`, `"<i8"`, `"|u1"`, `"<u2"`,
 #'   `"<u4"`, `"<u8"`, `"<f2"`, `"<f4"`, `"<f8"`, `"<c8"`, `"<c16"`,
 #'   `"<U<n>"`, `"|S<n>"`, `"<M8[<unit>]"` or `"<m8[<unit>]"`.
 #' @param order `"F"` (R's order) or `"C"` (NumPy's default).
@@ -68,6 +77,9 @@ npy_encode <- function(x, dtype = NULL, order = c("F", "C"),
   encoding <- znp_match(encoding, c("UTF-8", "latin1", "bytes"), "encoding",
                         call)
   unit <- znp_match(unit, c("us", "ns", "ms", "s"), "unit", call)
+  if (is.data.frame(x)) {
+    return(znp_encode_records(x, dtype, order, na, encoding, unit, call))
+  }
   source <- znp_source_type(x, call)
   descr <- if (is.null(dtype)) znp_default_dtype(source, x, unit) else dtype
   spec <- znp_target_spec(descr, source, x, call)
@@ -279,4 +291,81 @@ znp_prepare <- function(x, source, spec, na, encoding, call) {
     x <- as.double(x)
   }
   x
+}
+
+# A data frame as a structured array (design section 7.3).
+znp_encode_records <- function(x, dtype, order, na, encoding, unit, call) {
+  nm <- names(x)
+  if (is.null(nm) || anyNA(nm) || any(!nzchar(nm)) || anyDuplicated(nm)) {
+    znp_invalid_argument("x", paste(
+      "every column of a data frame needs a name, non-empty and unique,",
+      "to be a field"
+    ), call = call)
+  }
+  nm <- enc2utf8(nm)
+  if (length(x) > 1024) {
+    znp_invalid_argument("x", "a data frame of more than 1,024 columns",
+                         call = call)
+  }
+  if (!is.null(dtype) && (!is.character(dtype) || is.null(names(dtype)) ||
+                            !all(names(dtype) %in% nm))) {
+    znp_invalid_argument("dtype", paste(
+      "`dtype` for a data frame must be a character vector named by its",
+      "columns"
+    ), call = call)
+  }
+  specs <- vector("list", length(x))
+  cols <- vector("list", length(x))
+  int64s <- logical(length(x))
+  for (j in seq_along(x)) {
+    col <- x[[j]]
+    if (is.list(col) || length(dim(col)) > 1) {
+      znp_unsupported_type(NA_character_, sprintf(
+        "column '%s' is a %s; a field holds one value per row", nm[j],
+        if (is.list(col)) "list" else "matrix"
+      ), call = call)
+    }
+    source <- znp_source_type(col, call)
+    descr <- if (!is.null(dtype) && nm[j] %in% names(dtype)) {
+      dtype[[nm[j]]]
+    } else {
+      znp_default_dtype(source, col, unit)
+    }
+    specs[[j]] <- znp_target_spec(descr, source, col, call)
+    cols[[j]] <- znp_prepare(col, source, specs[[j]], na, encoding, call)
+    int64s[j] <- source %in% c("integer64", "integer64_time")
+  }
+  shape <- attr(x, "npy_shape")
+  if (is.null(shape)) {
+    shape <- nrow(x)
+  } else if (!is.numeric(shape) || length(shape) > 64 || prod(shape) != nrow(x)) {
+    znp_invalid_argument("x", "`npy_shape` does not match the rows", call = call)
+  }
+  opts <- as.integer(c(order == "C", na == "allow"))
+  res <- .Call(zunpy_encode_records, cols, specs, nm, as.double(shape), opts,
+               int64s)
+  if (res$status != "ZNP_OK") {
+    col <- if (!is.na(res$column)) sprintf(" in column '%s'", nm[res$column]) else ""
+    switch(res$status,
+      ZNP_WRITE_NA = znp_na_error(res$index, sprintf(
+        "row %s%s is NA, which its dtype cannot hold; see `na`",
+        format(res$index, scientific = FALSE), col
+      ), call = call),
+      ZNP_WRITE_RANGE = znp_range_error(res$index, sprintf(
+        "row %s%s does not fit its dtype", format(res$index, scientific = FALSE),
+        col
+      ), call = call),
+      ZNP_WRITE_INVALID = znp_invalid_argument("x", sprintf(
+        "row %s%s is not valid UTF-8", format(res$index, scientific = FALSE), col
+      ), call = call),
+      znp_unrepresentable("the array is too large for one raw vector",
+                          call = call)
+    )
+  }
+  if (res$replaced > 0) {
+    znp_warn("zunpy_na_replaced", sprintf(
+      "%s logical NA written as False", format(res$replaced, scientific = FALSE)
+    ), call = call)
+  }
+  res$value
 }

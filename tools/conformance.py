@@ -33,6 +33,30 @@ def show(v):
     return str(v)
 
 
+def column_tokens(flat):
+    if flat.dtype.kind in "Mm":
+        return ["NaT" if c == -(2**63) else str(c)
+                for c in flat.view(flat.dtype.str[0] + "i8").tolist()]
+    return [show(v) for v in flat.tolist()]
+
+
+def record_tokens(flat):
+    """As tools/make-fixtures.py writes a structured array."""
+    out = []
+    for name in flat.dtype.names:
+        ft = flat.dtype.fields[name][0]
+        base, sub = (ft.subdtype if ft.subdtype else (ft, ()))
+        m = int(np.prod(sub)) if sub else 1
+        col = flat[name].reshape(len(flat), m)
+        for e in range(m):
+            label = name if not sub else f"{name}.{e + 1}"
+            if out:
+                out.append("|")
+            out.append("@" + label.encode().hex() + "@" + base.str)
+            out.extend(column_tokens(np.ascontiguousarray(col[:, e])))
+    return out
+
+
 def parse(tok):
     """A MANIFEST value as a Python object: R writes floats with %a and
     Python with float.hex(), so values are compared, not strings."""
@@ -67,12 +91,11 @@ for r in rows:
     shape = ",".join(str(s) for s in a.shape)
     order = "F" if a.flags.f_contiguous and not a.flags.c_contiguous else "C"
     flat = np.array(a, order="C").reshape(-1)
-    if a.dtype.kind in "Mm":
-        got = ["NaT" if c == -(2**63) else str(c) for c in flat.view(flat.dtype.str[0] + "i8").tolist()]
-    else:
-        got = [show(v) for v in flat.tolist()]
+    got = record_tokens(flat) if a.dtype.names is not None else column_tokens(flat)
     want = r["values"].split(" ") if r["values"] else []
-    for what, g, w in [("descr", a.dtype.str, r["descr"]), ("shape", shape, r["shape"]),
+    # A structured array's dtype.str is |V<itemsize>; R's MANIFEST says |V.
+    descr = a.dtype.str if not (a.dtype.names and r["descr"] == "|V") else "|V"
+    for what, g, w in [("descr", descr, r["descr"]), ("shape", shape, r["shape"]),
                        ("order", order, r["order"])]:
         if g != w:
             print(f"FAIL: {r['file']}: {what} is {g!r}, MANIFEST says {w!r}")

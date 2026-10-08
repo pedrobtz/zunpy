@@ -86,13 +86,6 @@ test_that("a dimension above 2^31 - 1 is unrepresentable", {
   expect_true(is.na(e$index))
 })
 
-test_that("structured dtypes are refused until Stage 5, classed", {
-  x <- npy_header_bytes(
-    "{'descr': [('a', '<i4')], 'fortran_order': False, 'shape': (1,), }", raw(4)
-  )
-  expect_zunpy_error(npy_decode(x), "zunpy_unsupported_type")
-})
-
 test_that("a native byte order and 16-byte alignment warn", {
   x <- npy_header_bytes(npy_dict("'=f8'"), raw(8))
   expect_warning(v <- npy_decode(x), class = "zunpy_byte_order")

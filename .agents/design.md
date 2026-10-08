@@ -416,6 +416,19 @@ rows in column-major order carrying a `dim` attribute named `npy_shape`,
 since R has no array of records; this is documented as lossy for
 `npy_write()` unless the attribute is present (§7.4).
 
+*Settled at Stage 5.* The fields are read in C, not through a zubin
+layout spec and `bin_unpack()`: the build phase already reads every
+element type at any stride (`read_column()` in `znp_build.c`, the zubin
+unpack kernels for numbers, zunpy's own conversions for `S`, `U`, `V`,
+`M8` and `m8`), and a spec string would only be parsed back into the same
+fields. A subarray field of any shape gives one column per element, in C
+order, named `name.1` to `name.m`. Titles are dropped, as is padding. A
+0-d structured array is one row with `npy_shape` `numeric(0)`. Rows of a
+C-order array of more than one dimension are permuted into R's order
+record by record through one temporary; `order = "file"` keeps the file's
+order and reverses `npy_shape`. A data frame's rows are an R integer, so
+more than `2^31 - 1` records are `zunpy_unrepresentable`.
+
 ### 6.4 Memory order
 
 NumPy's default is C order (last index fastest). R's is Fortran order
@@ -511,9 +524,21 @@ would be a changing API. `1L` and `1` therefore write differently
 Each column is one field of a structured dtype, named by the column name,
 with the type the column would have as a vector. `character` columns
 become `U<n>` with n the longest value in the column; list columns are
-`zunpy_unsupported_type`. Row names are dropped. The data block is one
-`bin_pack()` call. Field names must be valid for NumPy: non-empty, unique,
+`zunpy_unsupported_type`. Row names are dropped. The data block is packed
+field by field through the same kernels as a plain array, at the record
+size as stride. Field names must be valid for NumPy: non-empty, unique,
 and UTF-8 (version 3.0 header if any is non-Latin-1, §9.2).
+
+*Settled at Stage 5.* `dtype` may be a character vector named by columns,
+giving some of them another dtype (`c(id = "|u1")`). The descr is written
+as `repr(dtype.descr)` is: each name as Python's `repr()` writes it (the
+quote it chooses, backslash escapes, `\xhh` for control characters), so
+the header matches NumPy's byte for byte, except for names holding
+unusual non-printing characters past U+00FF, whose escapes zunpy does not
+reproduce. A version 1.0 header stores Latin-1 names as Latin-1 bytes. A
+data frame carrying `npy_shape` is written with that shape, in Fortran
+order, or C order on request. At most 1,024 columns, the read side's
+`max_fields`.
 
 ### 7.4 Known lossy conversions
 
@@ -529,6 +554,9 @@ and UTF-8 (version 3.0 header if any is non-Latin-1, §9.2).
 | `S<n>` with `encoding` | transcoded to UTF-8 on read |
 | C-order file, `order = "R"` | permuted into R order |
 | structured array, k > 1 dims | data frame plus `npy_shape` |
+| record field titles, padding | dropped; written back packed, without titles |
+| subarray field | one column per element; written back as separate fields |
+| a field's dtype | the column's R type: `u4` reads as double and writes back as `<f8` unless `dtype` names it |
 | `M8[ns]` beyond 2^53 ns | precision lost in a double |
 
 Which of these round-trip: `NA_real_` does in R; the C-order permutation

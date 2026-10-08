@@ -38,16 +38,17 @@ static double count_to_units(int64_t r, int64_t scale)
     return (double)q + (double)rem / (double)scale;
 }
 
-/* Reads n int64 counts (file byte order) into dst as R units: NaT is
+/* Reads n int64 counts, `stride` bytes apart, in the file's byte order,
+   into dst as R units: NaT is
    NA_REAL. With scale 1 a count beyond 2^53 in magnitude is refused (*bad),
    since the double would not be exact; with a larger scale the result is
    the nearest double, which design 6.1 documents. Returns 0 or 1. */
-int znp_read_counts(const uint8_t *base, size_t n, int big_endian,
+int znp_read_counts(const uint8_t *base, size_t n, size_t stride, int big_endian,
                     int64_t scale, double *dst, size_t *bad)
 {
     const int64_t lim = (int64_t)1 << 53;
     for (size_t i = 0; i < n; i++) {
-        const uint8_t *p = base + 8 * i;
+        const uint8_t *p = base + stride * i;
         int64_t r = big_endian ? zb_rd_i64be(p) : zb_rd_i64le(p);
         if (r == INT64_MIN) {
             dst[i] = NA_REAL;
@@ -88,7 +89,7 @@ static int units_to_count(double x, int64_t scale, int64_t *out)
 /* Writes x (R units, NA as NaT) as int64 counts, little-endian. Returns 0,
    or 1 with *bad when a value has no exact count. */
 int znp_write_counts(const double *x, size_t n, int64_t scale, uint8_t *dst,
-                     size_t *bad)
+                     size_t stride, size_t *bad)
 {
     for (size_t i = 0; i < n; i++) {
         int64_t c;
@@ -98,7 +99,7 @@ int znp_write_counts(const double *x, size_t n, int64_t scale, uint8_t *dst,
             *bad = i;
             return 1;
         }
-        zb_wr_i64le(dst + 8 * i, c);
+        zb_wr_i64le(dst + stride * i, c);
     }
     return 0;
 }
