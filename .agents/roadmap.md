@@ -378,7 +378,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 ## Stage 9 — Release 0.1.0 · S
 
-**Status:** not started; needs zufast, zubin and zukomp on CRAN.
+**Status:** prepared 2026-10-08 on branch `stage-9-release` (draft pull request), waiting for zufast, zubin and zukomp on CRAN. Done on the branch: `Version: 0.1.0`, the `NEWS.md` heading, the README's `install.packages()` line; `cran-extrachecks` and `review-cran-submission` run with no finding beyond the items below. Left for when the providers are accepted: remove `Remotes:`, raise `LinkingTo: zubin (>= 0.1.0)`, reread `cran-comments.md`, rebuild and check against the CRAN tarballs (R10.3), and look at the nightly fuzz history (Stage 8 deviation).
 
 **Goal:** zunpy on CRAN.
 
