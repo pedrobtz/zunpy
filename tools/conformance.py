@@ -87,6 +87,23 @@ bad = 0
 with open(os.path.join(d, "MANIFEST.tsv"), newline="") as fp:
     rows = list(csv.DictReader(fp, delimiter="\t", quoting=csv.QUOTE_NONE))
 for r in rows:
+    if r["descr"] == "npz":
+        # Every member is a fixture of its own: the same dtype, shape, order
+        # and values.
+        want = dict(p.split("=", 1) for p in r["values"].split(" ")) if r["values"] else {}
+        with np.load(os.path.join(d, r["file"])) as z:
+            if list(z.files) != list(want):
+                print(f"FAIL: {r['file']}: members {z.files}, MANIFEST says {list(want)}")
+                bad += 1
+                continue
+            for k, f in want.items():
+                got, ref = z[k], np.load(os.path.join(d, f))
+                same_layout = got.dtype == ref.dtype and got.shape == ref.shape and \
+                    got.flags.f_contiguous == ref.flags.f_contiguous
+                if not same_layout or got.tobytes("A") != ref.tobytes("A"):
+                    print(f"FAIL: {r['file']}: member {k} differs from {f}")
+                    bad += 1
+        continue
     a = np.load(os.path.join(d, r["file"]))
     shape = ",".join(str(s) for s in a.shape)
     order = "F" if a.flags.f_contiguous and not a.flags.c_contiguous else "C"

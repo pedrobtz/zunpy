@@ -1,10 +1,14 @@
-# Writes the fuzz seed corpus to fuzz/seeds/ (or the directory given): one
-# valid header of each shape the grammar knows, each preceded by the
-# harness's options byte (0: the default limits). Run from the package root
-# and commit the result; r-actions' fuzz.yml reads fuzz/seeds.
+# Writes the fuzz seed corpora: fuzz/seeds/ for fuzz_header (one valid
+# header of each shape the grammar knows, and every .npy fixture) and
+# fuzz/seeds-zip/ for fuzz_zip (every .npz fixture and a hand-built
+# archive), each preceded by the harness's options byte (0: the default
+# limits). Run from the package root and commit the result; r-actions'
+# fuzz.yml reads them.
 source("tools/npy-bytes.R")
 out <- commandArgs(TRUE)[1]
 if (is.na(out)) out <- "fuzz/seeds"
+out_zip <- commandArgs(TRUE)[2]
+if (is.na(out_zip)) out_zip <- "fuzz/seeds-zip"
 dir.create(out, showWarnings = FALSE, recursive = TRUE)
 
 seeds <- list(
@@ -36,6 +40,7 @@ seeds <- list(
 )
 # Every NumPy fixture too (tools/make-fixtures.py), as roadmap Stage 2 asks.
 fixtures <- list.files("tests/testthat/fixtures/npy", "\\.npy$", full.names = TRUE)
+zips <- list.files("tests/testthat/fixtures/npy", "\\.npz$", full.names = TRUE)
 for (f in fixtures) {
   seeds[[paste0("fx-", sub("\\.npy$", "", basename(f)))]] <-
     readBin(f, "raw", file.size(f))
@@ -44,3 +49,13 @@ for (name in names(seeds)) {
   writeBin(c(as.raw(0), seeds[[name]]), file.path(out, paste0(name, ".bin")))
 }
 cat(length(seeds), "seeds written to", out, "\n")
+
+dir.create(out_zip, showWarnings = FALSE, recursive = TRUE)
+zip_seeds <- list(built = zip_bytes(list(a.npy = seeds$f8, b.npy = seeds$record)))
+for (f in zips) {
+  zip_seeds[[sub("\\.npz$", "", basename(f))]] <- readBin(f, "raw", file.size(f))
+}
+for (name in names(zip_seeds)) {
+  writeBin(c(as.raw(0), zip_seeds[[name]]), file.path(out_zip, paste0(name, ".bin")))
+}
+cat(length(zip_seeds), "seeds written to", out_zip, "\n")

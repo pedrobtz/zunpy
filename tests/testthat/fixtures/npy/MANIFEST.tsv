@@ -101,3 +101,8 @@ edge-s-nul.npy	|S3	2	C	2.3.3	6e84c6ded2e17300ba54b5f12e7646608627dd711b3f2fc2257
 edge-u-surrogate.npy	<U2	1	C	2.3.3	f31ed4944243b171fb989432eeff1fdddba08d3e8cd920191829d23aa38fc600	s:61eda080
 edge-s-latin1.npy	|S4	1	C	2.3.3	c390c7aa77f98ca9633354c941e7db7aebf7fa1f5c2377c13697957b959df16b	b:636166e9
 edge-td-day-big.npy	<m8[D]	1	C	2.3.3	dd106b4afbabf726362cdc613ffc108816050525270ef08f522315e5a54263a2	9007199254740993
+npz-stored.npz	npz			2.3.3	81208d07384d6ae493f7cbc3b474af9783cdd64cd0142471274d3530d560d5ce	x=f8-le-c.npy y=i4-le-c.npy
+npz-compressed.npz	npz			2.3.3	db93d2c64b1e85f4d101b17c3dc6cae2264554c332ce59df3731937e1d603ffe	x=f8-le-c.npy s=U5-le-c.npy r=rec-basic.npy
+npz-empty.npz	npz			2.3.3	8739c76e681f900923b900c9df0ef75cf421d39cabb54650c4b9ad19b6a76d85	
+npz-positional.npz	npz			2.3.3	952661f1d44ed4ecbf2d730886466391b903417913e3f7b468af1f244dcde987	arr_0=b1-na-c.npy arr_1=c16-le-c.npy
+npz-zip64.npz	npz			2.3.3	30c065e9fdc2c2988dc2bf134a1cccabe63a051d280ffadc82f3eae51695aab1	a=i2-le-c.npy b=S4-c.npy

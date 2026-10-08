@@ -22,7 +22,8 @@
 #           re:im; S and V bytes as b:<hex>, U strings as s:<hex of UTF-8>;
 #           datetime64 and timedelta64 as their integer counts, NaT as NaT;
 #           a structured array as one segment per R column (see
-#           record_tokens()), segments separated by a "|" token
+#           record_tokens()), segments separated by a "|" token; a .npz
+#           (descr npz) as key=<member fixture> pairs
 import hashlib
 import os
 import sys
@@ -265,6 +266,70 @@ save("edge-s-nul", np.array([b"a\x00b", b"c"], dtype="S3"))
 save("edge-u-surrogate", np.array(["a\ud800"], dtype="<U2"))
 save("edge-s-latin1", np.array(["caf\u00e9".encode("latin-1")], dtype="S4"))
 save("edge-td-day-big", np.array([2**53 + 1], dtype="<m8[D]"))
+
+# .npz archives (roadmap Stage 6), each member a fixture above, so that a
+# MANIFEST row only maps keys to fixture files: "key=file.npy ...".
+def save_npz(name, members, compressed=False):
+    path = os.path.join(OUT, name + ".npz")
+    arrays = {k: np.load(os.path.join(OUT, f)) for k, f in members.items()}
+    (np.savez_compressed if compressed else np.savez)(path, **arrays)
+    finish_npz(name, members)
+
+
+def finish_npz(name, members):
+    path = os.path.join(OUT, name + ".npz")
+    with open(path, "rb") as fp:
+        digest = hashlib.sha256(fp.read()).hexdigest()
+    rows.append([name + ".npz", "npz", "", "", NUMPY, digest,
+                 " ".join(f"{k}={f}" for k, f in members.items())])
+
+
+save_npz("npz-stored", {"x": "f8-le-c.npy", "y": "i4-le-c.npy"})
+save_npz("npz-compressed", {"x": "f8-le-c.npy", "s": "U5-le-c.npy", "r": "rec-basic.npy"},
+         compressed=True)
+save_npz("npz-empty", {})
+# Positional arrays are named arr_0, arr_1, ... by numpy.savez().
+np.savez(os.path.join(OUT, "npz-positional.npz"),
+         np.load(os.path.join(OUT, "b1-na-c.npy")), np.load(os.path.join(OUT, "c16-le-c.npy")))
+finish_npz("npz-positional", {"arr_0": "b1-na-c.npy", "arr_1": "c16-le-c.npy"})
+
+
+def zip64_archive(path, members):
+    """A stored archive whose directory uses every ZIP64 record although
+    nothing needs them: sizes and offsets as 0xFFFFFFFF with a ZIP64 extra,
+    and a ZIP64 end record with its locator. Large files are written this
+    way; this one is small enough to commit."""
+    import struct
+    import zlib
+    out = bytearray()
+    central = bytearray()
+    for key, f in members.items():
+        with open(os.path.join(OUT, f), "rb") as fp:
+            data = fp.read()
+        name = (key + ".npy").encode()
+        crc = zlib.crc32(data)
+        offset = len(out)
+        out += struct.pack("<IHHHHHIIIHH", 0x04034b50, 45, 0, 0, 0, 0x21, crc,
+                           0xFFFFFFFF, 0xFFFFFFFF, len(name), 20)
+        out += name + struct.pack("<HHQQ", 1, 16, len(data), len(data)) + data
+        central += struct.pack("<IHHHHHHIIIHHHHHII", 0x02014b50, 0x032D, 45, 0, 0, 0, 0x21,
+                               crc, 0xFFFFFFFF, 0xFFFFFFFF, len(name), 28, 0, 0, 0,
+                               0o600 << 16, 0xFFFFFFFF)
+        central += name + struct.pack("<HHQQQ", 1, 24, len(data), len(data), offset)
+    cd_start = len(out)
+    out += central
+    eocd64 = len(out)
+    out += struct.pack("<IQHHIIQQQQ", 0x06064b50, 44, 45, 45, 0, 0, len(members),
+                       len(members), len(central), cd_start)
+    out += struct.pack("<IIQI", 0x07064b50, 0, eocd64, 1)
+    out += struct.pack("<IHHHHIIH", 0x06054b50, 0, 0, 0xFFFF, 0xFFFF,
+                       0xFFFFFFFF, 0xFFFFFFFF, 0)
+    with open(path, "wb") as fp:
+        fp.write(bytes(out))
+
+
+zip64_archive(os.path.join(OUT, "npz-zip64.npz"), {"a": "i2-le-c.npy", "b": "S4-c.npy"})
+finish_npz("npz-zip64", {"a": "i2-le-c.npy", "b": "S4-c.npy"})
 
 with open(os.path.join(OUT, "MANIFEST.tsv"), "w") as fp:
     fp.write("file\tdescr\tshape\torder\tnumpy\tsha256\tvalues\n")

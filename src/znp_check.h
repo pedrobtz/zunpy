@@ -48,7 +48,9 @@ typedef enum {
     ZNP_ERR_HEADER_LIMIT,   /* header length over max_header           limit   */
     ZNP_ERR_DIMS_LIMIT,     /* more dimensions than max_dims           limit   */
     ZNP_ERR_FIELDS_LIMIT,   /* more fields than max_fields             limit   */
-    ZNP_ERR_SCRATCH         /* the caller's scratch is too small       internal */
+    ZNP_ERR_SCRATCH,        /* the caller's scratch is too small       internal */
+    ZNP_ERR_ZIP,            /* not a valid ZIP archive (.npz)          parse   */
+    ZNP_ERR_MEMBERS_LIMIT   /* more members than max_members           limit   */
 } znp_status;
 
 const char *znp_status_name(znp_status st);

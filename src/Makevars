@@ -14,6 +14,8 @@ OBJECTS = \
 	znp_info.o \
 	znp_perm.o \
 	znp_r_header.o \
+	znp_r_zip.o \
 	znp_text.o \
 	znp_time.o \
-	znp_write.o
+	znp_write.o \
+	znp_zip.o

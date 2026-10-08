@@ -109,6 +109,22 @@ segments <- vapply(seq_along(back), function(j) {
 rows <- c(rows, paste("r-records.npy", "|V", nrow(df), "C", "R", "-",
                       paste(segments, collapse = " | "), sep = "\t"))
 
+# A .npz, stored and compressed (roadmap Stage 6): each member also written
+# on its own, so that np.load() of the archive can be compared with it.
+arch <- list(m = values$matrix, s = values$unicode, r = df)
+for (z in c(FALSE, TRUE)) {
+  file <- if (z) "r-archive-deflate.npz" else "r-archive.npz"
+  writeBin(npy_encode(arch, compress = z), file.path(out, file))
+  pairs <- character()
+  for (k in names(arch)) {
+    single <- sprintf("r-archive-%s.npy", k)
+    writeBin(npy_encode(arch[[k]]), file.path(out, single))
+    pairs <- c(pairs, paste0(k, "=", single))
+  }
+  rows <- c(rows, paste(file, "npz", "", "", "R", "-", paste(pairs, collapse = " "),
+                        sep = "\t"))
+}
+
 writeLines(c("file\tdescr\tshape\torder\tnumpy\tsha256\tvalues", rows),
            file.path(out, "MANIFEST.tsv"))
 cat(length(rows), "files written to", out, "\n")

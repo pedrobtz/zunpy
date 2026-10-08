@@ -49,6 +49,8 @@ const char *znp_status_name(znp_status st)
     case ZNP_ERR_DIMS_LIMIT:   return "ZNP_ERR_DIMS_LIMIT";
     case ZNP_ERR_FIELDS_LIMIT: return "ZNP_ERR_FIELDS_LIMIT";
     case ZNP_ERR_SCRATCH:      return "ZNP_ERR_SCRATCH";
+    case ZNP_ERR_ZIP:          return "ZNP_ERR_ZIP";
+    case ZNP_ERR_MEMBERS_LIMIT: return "ZNP_ERR_MEMBERS_LIMIT";
     }
     return "ZNP_ERR_UNKNOWN";
 }

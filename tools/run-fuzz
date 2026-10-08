@@ -1,8 +1,9 @@
 #!/bin/sh
-# libFuzzer over the R-free check phase (roadmap Stage 1). Usage, from the
-# package root:
+# libFuzzer over the R-free check phase (roadmap Stage 1) and the .npz
+# directory check (Stage 6), one after the other. Usage, from the package
+# root:
 #
-#   tools/run-fuzz [seconds]        default 60
+#   tools/run-fuzz [seconds]        default 60, per target
 #   CANARY_ONLY=1 tools/run-fuzz    only prove the canary crashes (CI fuzzes
 #                                   through r-actions' fuzz.yml)
 #
@@ -29,30 +30,36 @@ fi
 
 FLAGS="-std=gnu17 -g -O1 -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined
        -fno-sanitize-recover=undefined -UNDEBUG -DZNP_STANDALONE -Isrc -I$INC"
-# shellcheck disable=SC2086
-$CC $FLAGS -DZNP_FUZZ_CANARY fuzz/fuzz_header.c src/znp_header.c -o "$WORK/canary"
-# shellcheck disable=SC2086
-$CC $FLAGS fuzz/fuzz_header.c src/znp_header.c -o "$WORK/fuzz_header"
+fuzz_one() {  # fuzz_one TARGET SOURCE SEEDS DICT
+  t=$1; src=$2; seeds=$3; dict=$4
+  # shellcheck disable=SC2086
+  $CC $FLAGS -DZNP_FUZZ_CANARY "fuzz/$t.c" "$src" -o "$WORK/canary-$t"
+  # shellcheck disable=SC2086
+  $CC $FLAGS "fuzz/$t.c" "$src" -o "$WORK/$t"
 
-# 1. The canary must crash. The exit status is the binary's own, never a
-# pipe's.
-if "$WORK/canary" -runs=100000 -artifact_prefix="$WORK/canary-" fuzz/seeds > "$WORK/canary.log" 2>&1; then
-  echo "FAIL: the canary did not crash; the fuzz gate cannot be trusted" >&2
-  exit 2
-fi
-ls "$WORK"/canary-* > /dev/null 2>&1 || { echo "FAIL: the canary exited without a crash artifact" >&2; tail "$WORK/canary.log" >&2; exit 2; }
-echo "==> canary crashed, as it must"
-[ "${CANARY_ONLY:-}" = 1 ] && exit 0
+  # 1. The canary must crash. The exit status is the binary's own, never a
+  # pipe's.
+  if "$WORK/canary-$t" -runs=100000 -artifact_prefix="$WORK/canary-$t-" "$seeds" > "$WORK/canary-$t.log" 2>&1; then
+    echo "FAIL: the $t canary did not crash; the fuzz gate cannot be trusted" >&2
+    exit 2
+  fi
+  ls "$WORK"/canary-"$t"-* > /dev/null 2>&1 || { echo "FAIL: the $t canary exited without a crash artifact" >&2; tail "$WORK/canary-$t.log" >&2; exit 2; }
+  echo "==> $t canary crashed, as it must"
+  [ "${CANARY_ONLY:-}" = 1 ] && return 0
 
-# 2. The target, for SECS seconds, over the corpus and the seeds.
-mkdir -p "$CORPUS" "$WORK/artifacts"
-status=0
-"$WORK/fuzz_header" -max_total_time="$SECS" -max_len=65536 -dict=fuzz/npy.dict \
-  -artifact_prefix="$WORK/artifacts/" "$CORPUS" fuzz/seeds > "$WORK/fuzz.log" 2>&1 || status=$?
-tail -3 "$WORK/fuzz.log"
-if [ "$status" != 0 ] || [ -n "$(ls -A "$WORK/artifacts")" ]; then
-  echo "FAIL: fuzz_header found a crash (exit $status)" >&2
-  mkdir -p fuzz/artifacts && cp "$WORK/artifacts"/* fuzz/artifacts/ 2>/dev/null || true
-  exit 1
-fi
-echo "==> fuzz_header: ${SECS}s, no finding; corpus now $(ls "$CORPUS" | wc -l | tr -d ' ') inputs"
+  # 2. The target, for SECS seconds, over the corpus and the seeds.
+  mkdir -p "$CORPUS/$t" "$WORK/artifacts-$t"
+  status=0
+  "$WORK/$t" -max_total_time="$SECS" -max_len=65536 ${dict:+-dict=$dict} \
+    -artifact_prefix="$WORK/artifacts-$t/" "$CORPUS/$t" "$seeds" > "$WORK/fuzz-$t.log" 2>&1 || status=$?
+  tail -3 "$WORK/fuzz-$t.log"
+  if [ "$status" != 0 ] || [ -n "$(ls -A "$WORK/artifacts-$t")" ]; then
+    echo "FAIL: $t found a crash (exit $status)" >&2
+    mkdir -p fuzz/artifacts && cp "$WORK/artifacts-$t"/* fuzz/artifacts/ 2>/dev/null || true
+    exit 1
+  fi
+  echo "==> $t: ${SECS}s, no finding; corpus now $(ls "$CORPUS/$t" | wc -l | tr -d ' ') inputs"
+}
+
+fuzz_one fuzz_header src/znp_header.c fuzz/seeds fuzz/npy.dict
+fuzz_one fuzz_zip src/znp_zip.c fuzz/seeds-zip ""

@@ -226,7 +226,8 @@ npy_read(file, ...)        # path, URL or connection -> array,
                            # or a named list for .npz
 npy_decode(x, ...)         # raw vector -> array
 npy_header(file)           # the parsed header, no data read
-npy_names(file)            # member names of a .npz, no data read
+npy_names(file)            # member names of a .npz, no data read (Stage 6:
+                           # a raw vector; a path at Stage 7)
 
 # write
 npy_write(x, file, ...)    # array -> .npy; named list -> .npz
@@ -501,7 +502,10 @@ Notes, by row:
   from its value in seconds.
 - matrix, array: `dimnames` are dropped (a documented loss).
 - `data.frame`: columns by §7.3.
-- named `list`: each element by this table; `npy_encode()` refuses it.
+- named `list`: each element by this table, as a `.npz`. *Settled at
+  Stage 6:* `npy_encode()` writes it too, to a raw vector, as the roadmap
+  has `npy_decode()` and `npy_encode()` dispatch; `compress = TRUE`
+  deflates the members.
 - Anything else: `NULL`, an unnamed `list`, functions, environments and
   S4 objects.
 
@@ -767,6 +771,24 @@ cross-package request.
 Writing produces the same three records, ZIP64 when a member needs it,
 with the determinism rules of §8.
 
+*Settled at Stage 6.* The directory is read in C, R-free
+(`src/znp_zip.c`), in two calls as the header is, with eight guards of its
+own, a fuzz target (`fuzz/fuzz_zip.c`) and mutation cases; R slices each
+member out and has zukomp inflate it. The archive is laid out as
+`numpy.savez()` lays it out through Python's `zipfile` (*verified
+2026-10-08* against NumPy 2.3.3): a ZIP64 extra in every local header with
+both sizes 0xFFFFFFFF there, version 4.5 made on Unix, external attributes
+0600, the date 1980-01-01 00:00, and in the central directory the real
+sizes, with a ZIP64 extra only for a field that needs one. A stored archive
+is then byte-identical to NumPy's for the same members (`test-npz.R`); a
+deflated one is not, since miniz and zlib compress differently. A member
+declaring zero bytes is inflated with a cap of one byte, since zukomp reads
+`max_output = 0` as no cap. Member names are UTF-8 when the entry says so
+or when they are valid UTF-8, else Latin-1. Two members with one key are
+`zunpy_invalid_error`; a member that is not a `.npy` is
+`zunpy_parse_error` naming it. Encryption, methods other than stored and
+DEFLATE, and split archives are `zunpy_unsupported_type`.
+
 **Limits.** `max_size` applies to the sum of declared uncompressed sizes
 before any member is inflated, so the directory alone decides whether the
 file is too big. `max_members` (default 10,000) bounds the directory walk.
@@ -1013,8 +1035,8 @@ Reasons where they are not in the section cited:
    warning, since the alternative is a file nobody can read.
 2. *Decided at Stage 4:* the override is `dtype = "<U<n>"` (or `"|S<n>"`),
    with the default as stated; §7.1 says how.
-3. **`.npz` member names.** NumPy allows any string; ZIP names are bytes.
-   Refuse names with `/`, `\`, NUL or a leading `..`? Recommended: yes,
+3. *Decided at Stage 6:* names holding `/`, `\` or NUL, starting with
+   `..`, or equal to `.` are refused on write (`zunpy_invalid_argument`),
    since a reader elsewhere may extract to disk.
 4. **The 10,000-byte header default** is NumPy's; a structured dtype with
    1,024 fields can exceed it. Raise `max_header` or lower `max_fields`?

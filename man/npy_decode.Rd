@@ -6,6 +6,7 @@
 \usage{
 npy_decode(
   x,
+  names = NULL,
   order = c("R", "file"),
   int64 = c("double", "integer64"),
   na = c("error", "allow"),
@@ -14,11 +15,14 @@ npy_decode(
   datetime = c("convert", "integer64"),
   max_size = 2 * 1024^3,
   max_header = 10000,
-  max_dims = 32
+  max_dims = 32,
+  max_members = 10000
 )
 }
 \arguments{
-\item{x}{A raw vector holding a whole \code{.npy} file.}
+\item{x}{A raw vector holding a whole \code{.npy} or \code{.npz} file.}
+
+\item{names}{For a \code{.npz}, the members to read (by default all of them).}
 
 \item{order}{\code{"R"} to index as NumPy does, or \code{"file"} to keep the
 file's memory order.}
@@ -43,9 +47,12 @@ refused.}
 default.}
 
 \item{max_dims}{The most dimensions accepted, at most 64.}
+
+\item{max_members}{For a \code{.npz}, the most members accepted.}
 }
 \value{
-A vector, matrix or array.
+A vector, matrix, array or data frame; for a \code{.npz}, a named list
+of them.
 }
 \description{
 Decodes a \code{.npy} file already in memory into an R vector, matrix or
@@ -53,6 +60,15 @@ array. The header is parsed and checked whole, and the declared shape
 compared with the bytes present, before anything is allocated.
 }
 \details{
+A \code{.npz} file (a ZIP archive of \code{.npy} files, as \code{numpy.savez()} and
+\code{numpy.savez_compressed()} write) is told apart by its first bytes and
+read as a named list, one element per member, named without the \code{.npy}
+suffix; \code{names} reads only some of them. The archive's directory is
+checked before any member is read: the number of members against
+\code{max_members} and their declared sizes against \code{max_size}. A compressed
+member is inflated no further than its declared size, and every member
+is checked against its CRC-32.
+
 Types map as follows: \code{b1} to logical; \code{i1}, \code{u1}, \code{i2}, \code{u2} and \code{i4}
 to integer; \code{u4}, \code{f2}, \code{f4} and \code{f8} to double; \code{i8} and \code{u8} to double,
 or to \code{integer64} with \code{int64 = "integer64"}; \code{c8} and \code{c16} to complex.
@@ -95,6 +111,6 @@ x <- c(as.raw(c(0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59, 1, 0)),
 npy_decode(x)
 }
 \seealso{
-\code{\link[=npy_header]{npy_header()}} for the header alone; \link{zunpy-conditions} for the
-errors.
+\code{\link[=npy_header]{npy_header()}} for the header alone; \code{\link[=npy_names]{npy_names()}} for the
+members of a \code{.npz}; \link{zunpy-conditions} for the errors.
 }

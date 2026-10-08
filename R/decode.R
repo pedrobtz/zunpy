@@ -4,6 +4,15 @@
 #' array. The header is parsed and checked whole, and the declared shape
 #' compared with the bytes present, before anything is allocated.
 #'
+#' A `.npz` file (a ZIP archive of `.npy` files, as `numpy.savez()` and
+#' `numpy.savez_compressed()` write) is told apart by its first bytes and
+#' read as a named list, one element per member, named without the `.npy`
+#' suffix; `names` reads only some of them. The archive's directory is
+#' checked before any member is read: the number of members against
+#' `max_members` and their declared sizes against `max_size`. A compressed
+#' member is inflated no further than its declared size, and every member
+#' is checked against its CRC-32.
+#'
 #' Types map as follows: `b1` to logical; `i1`, `u1`, `i2`, `u2` and `i4`
 #' to integer; `u4`, `f2`, `f4` and `f8` to double; `i8` and `u8` to double,
 #' or to `integer64` with `int64 = "integer64"`; `c8` and `c16` to complex.
@@ -35,7 +44,8 @@
 #' Python; `order = "file"` skips the permutation and returns the array with
 #' its dimensions reversed, its memory identical to the file's.
 #'
-#' @param x A raw vector holding a whole `.npy` file.
+#' @param x A raw vector holding a whole `.npy` or `.npz` file.
+#' @param names For a `.npz`, the members to read (by default all of them).
 #' @param order `"R"` to index as NumPy does, or `"file"` to keep the
 #'   file's memory order.
 #' @param int64 `"double"` or `"integer64"` (needs the bit64 package to be
@@ -51,9 +61,11 @@
 #' @param max_header The largest header accepted, in bytes; NumPy's own
 #'   default.
 #' @param max_dims The most dimensions accepted, at most 64.
-#' @return A vector, matrix or array.
-#' @seealso [npy_header()] for the header alone; [zunpy-conditions] for the
-#'   errors.
+#' @param max_members For a `.npz`, the most members accepted.
+#' @return A vector, matrix, array or data frame; for a `.npz`, a named list
+#'   of them.
+#' @seealso [npy_header()] for the header alone; [npy_names()] for the
+#'   members of a `.npz`; [zunpy-conditions] for the errors.
 #' @export
 #' @examples
 #' # A 2 x 3 little-endian double matrix in C order, as numpy.save() writes it.
@@ -64,23 +76,41 @@
 #'        as.raw(c(length(header), 0)), header,
 #'        writeBin(as.double(0:5), raw(), size = 8, endian = "little"))
 #' npy_decode(x)
-npy_decode <- function(x, order = c("R", "file"),
+npy_decode <- function(x, names = NULL, order = c("R", "file"),
                        int64 = c("double", "integer64"),
                        na = c("error", "allow"),
                        strings = c("character", "raw"),
                        encoding = c("UTF-8", "latin1", "bytes"),
                        datetime = c("convert", "integer64"),
                        max_size = 2 * 1024^3, max_header = 10000,
-                       max_dims = 32) {
+                       max_dims = 32, max_members = 10000) {
   call <- sys.call()
   znp_check_raw(x, call = call)
-  order <- znp_match(order, c("R", "file"), "order", call)
-  int64 <- znp_match(int64, c("double", "integer64"), "int64", call)
-  na <- znp_match(na, c("error", "allow"), "na", call)
-  strings <- znp_match(strings, c("character", "raw"), "strings", call)
-  encoding <- znp_match(encoding, c("UTF-8", "latin1", "bytes"), "encoding",
-                        call)
-  datetime <- znp_match(datetime, c("convert", "integer64"), "datetime", call)
+  opts <- list(
+    order = znp_match(order, c("R", "file"), "order", call),
+    int64 = znp_match(int64, c("double", "integer64"), "int64", call),
+    na = znp_match(na, c("error", "allow"), "na", call),
+    strings = znp_match(strings, c("character", "raw"), "strings", call),
+    encoding = znp_match(encoding, c("UTF-8", "latin1", "bytes"), "encoding",
+                         call),
+    datetime = znp_match(datetime, c("convert", "integer64"), "datetime",
+                         call),
+    max_size = max_size, max_header = max_header, max_dims = max_dims
+  )
+  # PK: a ZIP archive, so a .npz (D2).
+  if (length(x) >= 2 && x[1] == as.raw(0x50) && x[2] == as.raw(0x4b)) {
+    return(znp_npz_decode(x, names, max_members, opts, call))
+  }
+  if (!is.null(names)) {
+    znp_invalid_argument("names", "`names` selects members of a .npz only",
+                         call = call)
+  }
+  do.call(znp_decode_npy, c(list(x), opts, list(call = call)), quote = TRUE)
+}
+
+# One .npy, its arguments already checked.
+znp_decode_npy <- function(x, order, int64, na, strings, encoding, datetime,
+                           max_size, max_header, max_dims, call) {
   limits <- znp_limits(max_size, max_header, max_dims, 1024, call = call)
   opts <- c(order == "file", int64 == "integer64", na == "allow",
             strings == "raw", match(encoding, c("UTF-8", "latin1", "bytes")) - 1,

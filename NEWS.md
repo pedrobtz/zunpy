@@ -1,5 +1,10 @@
 # zunpy 0.0.0.9000
 
+* `.npz` archives: `npy_decode()` reads one as a named list (`names` for
+  some members), `npy_encode()` writes a named list as one (`compress` for
+  DEFLATE), and `npy_names()` lists the members. The directory is checked
+  before any member is read, members are inflated no further than their
+  declared size, and every member's CRC-32 is checked.
 * Structured dtypes (record arrays) read as data frames, one column per
   field or subarray element, and data frames write as record arrays;
   `dtype` can name the dtype of some columns.
