@@ -249,8 +249,9 @@ the bounded reader of §12 over a path, URL or connection, following
 
 ```r
 npy_read(
-  file,
-  names      = NULL,                  # .npz: a character vector of members
+  file, ...,
+  names      = NULL,                  # .npz: a character vector of members;
+                                      # after ... so that na = never matches it
   order      = c("R", "file"),        # section 6.4
   int64      = c("double", "integer64"),
   na         = c("error", "allow"),
@@ -891,9 +892,12 @@ that is a valid Python expression but not in §9.2 is a parse error.
 
 ## 13. Memory model
 
-- Reading a path uses `readBin()` in 64 KiB blocks bounded by `max_size`,
-  as `cbor_read()` does; the whole file is in one raw vector before the
-  check phase runs. Lazy reading comes in zunpy 0.2.0, on zubin 0.3.0
+- Reading a path checks its size against `max_size` first and reads it
+  with one `readBin()` of exactly that size (*settled at Stage 7*: asking
+  for one byte more makes R shrink, so copy, the result); a URL or
+  connection is read in 64 KiB blocks to at most `max_size + 1` bytes, as
+  `cbor_read()` does. The whole file is in one raw vector before the
+  check phase runs, except on the direct path of §16. Lazy reading comes in zunpy 0.2.0, on zubin 0.3.0
   views and zubin 0.4.0 memory maps (*verified 2026-10-08*).
 - The check phase allocates nothing itself. It runs in two calls: the
   first reads the prefix and bounds the header length by `max_header`
@@ -995,6 +999,35 @@ Against `RcppCNPy` and `reticulate` on 10^7 doubles (80 MB) and 10^7
   slower than `readBin()` plus `iconv()` on the same bytes.
 - `.npz` stored members add the directory walk only; deflated members are
   `zukomp`'s speed.
+
+**Measured at Stage 7** (`tools/run-benchmarks`, 2026-10-08; R 4.6.1 on
+an Apple M-series laptop, macOS, median of 5; 10^7 elements; `RcppCNPy`
+not installed, so its row is missing, and `reticulate` is not used):
+
+| Operation | zunpy | base R | ratio |
+| --- | --- | --- | --- |
+| decode `f8`, raw to double | 0.003 s | 0.127 s (`readBin` of a slice) | 0.02 |
+| decode `i4`, raw to integer | 0.012 s | 0.075 s | 0.16 |
+| encode `f8` to raw | 0.005 s | 0.007 s (`writeBin`) | 0.71 |
+| encode `i4` to raw | 0.013 s | 0.004 s | 3.25 |
+| decode a C-order `f8` matrix | 0.157 s | 0.126 s | 1.25 |
+| `npy_write()` / `writeBin()` to a file | 0.051 s | 0.048 s | 1.06 |
+| `npy_read()` / `readBin()` from a file | 0.013 s | 0.013 s | 1.00 |
+| decode `U8`, 10^6 strings / `iconv()` | 0.083 s | 1.420 s | 0.06 |
+| `.npz` stored, write | 0.158 s | 0.064 s | 2.47 |
+| `.npz` stored, read | 0.107 s | 0.013 s | 8.23 |
+
+Met: reading and writing files (within 10%), strings, and the C-order
+permutation's one extra pass. *Settled at Stage 7:* the read target needs
+`npy_read()` to `readBin()` a plain little-endian `f8`, `i4` or `c16`
+array that needs no permutation straight into its result, after checking
+its header and that the file's size is exactly what the header declares;
+anything else reads the file into a raw vector and decodes it.
+`encode i4` is 3x `writeBin()` because of the `NA` scan `writeBin()` does
+not make (13 ms for 10^7 values). A stored `.npz` is not "the directory
+walk only": every member is copied out of the archive and checked against
+its CRC-32 (slicing-by-8, about 3 GB/s), which the design requires; the
+8x is those two passes over 80 MB.
 
 ## 17. Decisions
 

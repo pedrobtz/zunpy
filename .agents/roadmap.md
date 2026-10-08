@@ -320,7 +320,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 ## Stage 7 — Connections, `npy_read()`, fast paths · S
 
-**Status:** not started.
+**Status:** done 2026-10-08 ([#10](https://github.com/pedrobtz/zunpy/issues/10)).
 
 **Goal:** the user-facing API over paths, URLs and connections, bounded, and the speed targets of §16 measured.
 
@@ -334,6 +334,14 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 - Bounded reading holds for every source kind; a connection longer than `max_size` stops at `max_size + 1` bytes.
 - The benchmarks of §16 are recorded, and any target missed is a recorded deviation.
+
+**What actually happened**
+
+- `npy_read()` and `npy_write()` over paths, URLs and connections, with `R/zu_source.R` copied verbatim from zuxml; `npy_header()` reads only the header's bytes from a file, and `npy_names()` reads a file into memory (bounded) before reading its directory.
+- The first benchmark run missed both file targets (read 8x, `.npz` read 53x). Three fixes: read a path with exactly its size (asking for one more byte made R copy the result), slice `.npz` members in C (`x[off + seq_len(n)]` built an index as long as the member), and CRC-32 by slicing-by-8. Then a direct path: a plain little-endian `f8`, `i4` or `c16` file needing no permutation is read by `readBin()` straight into its result after its header and size are checked. Reading a file is now level with `readBin()`; writing within 6% of `writeBin()` (design §16, with the numbers).
+- The `memcpy` fast path for `f8`, `i4` and `c16` in both directions, gated by `zb_host_big_endian()`; `-DZNP_FORCE_BE_HOST` compiles it out, `zunpy_info()$fast_path` says which, and `native-checks.yaml` runs the whole suite in a forced build. The `NA` scan for `i4` is written without an early exit so that it vectorises.
+- A bug found by the tests: `npy_read(f, na = "allow")` partially matched `na` to `names`; `names` now follows `...`.
+- `RcppCNPy` was not installed where the benchmarks ran; its row is skipped.
 
 ---
 

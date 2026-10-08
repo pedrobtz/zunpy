@@ -5,10 +5,12 @@
 
 #' The names of the arrays in a `.npz`
 #'
-#' Reads the directory of a `.npz` archive held in a raw vector, without
-#' reading or inflating any member.
+#' Reads the directory of a `.npz` archive, without inflating or decoding
+#' any member. A path, URL or connection is read into memory first, bounded
+#' by `max_size`.
 #'
-#' @param x A raw vector holding a `.npz` file.
+#' @param x A raw vector holding a `.npz` file, or a path, URL or
+#'   connection.
 #' @param max_members The most members accepted.
 #' @inheritParams npy_decode
 #' @return A character vector: each member's name without its `.npy`
@@ -19,7 +21,9 @@
 #' npy_names(z)
 npy_names <- function(x, max_size = 2 * 1024^3, max_members = 10000) {
   call <- sys.call()
-  znp_check_raw(x, call = call)
+  if (!is.raw(x)) {
+    x <- znp_read_bounded(x, max_size, call)
+  }
   znp_npz_members(x, max_size, max_members, call)$key
 }
 
@@ -86,7 +90,9 @@ znp_npz_decode <- function(x, names, max_members, opts, call) {
 
 znp_npz_member <- function(x, m, opts, call) {
   key <- m$key
-  payload <- if (m$csize > 0) x[m$data_offset + seq_len(m$csize)] else raw()
+  # Sliced in C: x[offset + seq_len(n)] would build an index as long as the
+  # member.
+  payload <- .Call(zunpy_slice, x, m$data_offset, m$csize)
   if (m$method == 8L) {
     # The declared size is the cap, so an archive that lies about it stops
     # there (a zip bomb); max_output = 0 would mean no cap at all.

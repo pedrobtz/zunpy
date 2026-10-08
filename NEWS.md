@@ -1,5 +1,9 @@
 # zunpy 0.0.0.9000
 
+* `npy_read()` and `npy_write()` read and write `.npy` and `.npz` files at a
+  path, a URL or a connection, bounded by `max_size`; `npy_header()` and
+  `npy_names()` take them too. Reading and writing a file are within 10%
+  of `readBin()` and `writeBin()`.
 * `.npz` archives: `npy_decode()` reads one as a named list (`names` for
   some members), `npy_encode()` writes a named list as one (`compress` for
   DEFLATE), and `npy_names()` lists the members. The directory is checked

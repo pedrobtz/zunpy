@@ -13,7 +13,7 @@ Sibling checkouts are in `../`. `zucbor` is the model for the check-then-build s
 
 ## Current state
 
-**2026-10-08: Stages 0–6 done.** `npy_decode()` reads and `npy_encode()` writes every dtype of design §6.1 and §7.1 as raw vectors — numbers, booleans, complex, `S`/`U` strings, `V` bytes (read only), dates and times, structured dtypes as data frames — and `.npz` archives as named lists (`npy_names()` lists members); `npy_header()` reads a header. The bytes written match `numpy.save()`'s and, for stored archives, `numpy.savez()`'s. Files, URLs and connections (`npy_read()`, `npy_write()`) are not built yet. Gates: `hardening.yaml` (lint, symbols, mutation check over 27 guards in two files, two fuzz targets with canaries), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk) and `conformance.yaml` (fixtures regenerated with NumPy and checked against `np.load()`, and R-written files read by `np.load()`). zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
+**2026-10-08: Stages 0–7 done.** The whole API of design §5 exists: `npy_read()`/`npy_write()` over paths, URLs and connections, `npy_decode()`/`npy_encode()` over raw vectors, `npy_header()`, `npy_names()`, `npy_dtype()`, `zunpy_info()`. Every dtype of §6.1 and §7.1 both ways (structured as data frames, `.npz` as named lists); bytes written match `numpy.save()`'s and, stored, `numpy.savez()`'s. Benchmarks are recorded in design §16. Left: Stage 8 (hardening and documentation: the vignette, `cran-comments.md`, the `RcppCNPy` tests) and Stage 9 (release, blocked on zufast, zubin and zukomp reaching CRAN, *verified 2026-10-08*). Gates: `hardening.yaml` (lint, symbols, mutation check over 27 guards in two files, two fuzz targets with canaries), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk, a forced-big-endian build) and `conformance.yaml`. Tracking: parent #2, stages #3–#12.
 
 Update this paragraph at the end of every stage.
 
@@ -62,7 +62,7 @@ tools/check-symbols <so>       # Stage 0: only R_init_zunpy exported; no stdio/a
 tools/run-mutation-check       # Stage 1: every /* GUARD: */ seen to be load-bearing (cases: tools/mutation-cases.R)
 Rscript tools/fuzz-seeds.R     # Stage 1: regenerate fuzz/seeds (commit the result)
 tools/check-fixtures           # Stage 2: regenerate the NumPy fixtures, diff, check against np.load() (needs uv)
-tools/run-benchmarks           # Stage 7: against readBin(), RcppCNPy, reticulate; not a CI gate
+tools/run-benchmarks [n]       # Stage 7: against readBin()/writeBin() (and RcppCNPy if installed); not a CI gate
 ```
 
 ## Architecture
@@ -70,7 +70,7 @@ tools/run-benchmarks           # Stage 7: against readBin(), RcppCNPy, reticulat
 Planned layout, from design §4, §10 and §13. Today `src/` holds everything below.
 
 ```text
-R/            decode.R, header.R, encode.R, read.R, npz.R, structured.R, dtype.R,
+R/            decode.R, header.R, encode.R, read.R, npz.R,
               conditions.R, args.R, info.R, zu_source.R (copied verbatim from zuxml),
               zunpy-package.R
 src/          init.c          registration only
@@ -107,7 +107,8 @@ Reading is two phases, as in zucbor. Bytes (from `npy_decode()`, or `npy_read()`
 - **A guard's `if` is one line.** `tools/run-mutation-check` mutates it with `sed`; a condition split across lines cannot be mutated and fails the check. Each guard needs a case in `tools/mutation-cases.R`.
 - **The check phase contains no R.** `znp_header.c` never includes `R.h`; the fuzz build (`-DZNP_STANDALONE`) compiles it standalone.
 - **Guards carry `/* GUARD: name */`** on their `if` lines and a `test_that("GUARD name")` each; `tools/run-mutation-check` proves each one is load-bearing. A new guard without its test does not count.
-- **Byte order comes from the header, never from the host.** Every read goes through zubin's `le`/`be` kernels; the `memcpy` fast path exists only behind `zb_host_big_endian()` (Stage 7). The `-DZNP_FORCE_BE_HOST` build is how this is tested on a little-endian machine.
+- **Byte order comes from the header, never from the host.** Every read goes through zubin's `le`/`be` kernels; the `memcpy` fast path (`znp_fast_path()` in `znp_r.h`, and `znp_read_direct()` in `R/read.R`) exists only for little-endian data on a little-endian host. The `-DZNP_FORCE_BE_HOST` build (`native-checks.yaml`) runs the suite without it; set `ZUNPY_FORCED_BE` when running such a build locally, as `test-info.R` checks the flag took.
+- **An argument before `...` partially matches.** `npy_read(f, na = ...)` once set `names`; arguments of `npy_read()` and `npy_write()` other than the first ones go after `...`.
 - **No byte-level code of zunpy's own** beyond what zubin has no type for: complex as float pairs, UCS-4 strings, `datetime64` classes and ZIP's CRC-32. Byte swapping and narrowing are zubin's.
 - **Writing is deterministic and matches NumPy byte for byte** (design §8): key order, quotes, trailing comma, `(n,)`, 64-byte padding, little-endian, fixed `.npz` timestamps. Fixtures prove it; do not "tidy" the header format.
 - **Fixture names are lower-case and distinct ignoring case.** macOS file systems are case-insensitive: `M8-M.npy` and `m8-m.npy` were once one file.

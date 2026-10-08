@@ -25,14 +25,22 @@ static int znp_providers_selftest(void)
     return 1;
 }
 
-/* list(zubin, zufast, host_big_endian, selftest) for zunpy_info(). */
+/* list(zubin, zufast, host_big_endian, selftest, fast_path) for
+   zunpy_info(). */
 SEXP zunpy_build_info(void)
 {
-    SEXP out = PROTECT(Rf_allocVector(VECSXP, 4));
+    SEXP out = PROTECT(Rf_allocVector(VECSXP, 5));
     SET_VECTOR_ELT(out, 0, Rf_mkString(ZUBIN_VERSION));
     SET_VECTOR_ELT(out, 1, Rf_mkString(ZUFAST_VERSION));
     SET_VECTOR_ELT(out, 2, Rf_ScalarLogical(zb_host_big_endian()));
     SET_VECTOR_ELT(out, 3, Rf_ScalarLogical(znp_providers_selftest()));
+    SET_VECTOR_ELT(out, 4, Rf_ScalarLogical(znp_fast_path()));
     UNPROTECT(1);
     return out;
+}
+
+/* Whether the fast path is compiled in and the host takes it. */
+SEXP zunpy_fast_path(void)
+{
+    return Rf_ScalarLogical(znp_fast_path());
 }

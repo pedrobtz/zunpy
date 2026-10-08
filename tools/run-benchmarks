@@ -1,0 +1,8 @@
+#!/bin/sh
+# Runs tools/benchmarks.R against the package built from this checkout
+# (design section 16). Usage, from the package root: tools/run-benchmarks [n]
+set -eu
+LIB=$(mktemp -d)
+trap 'rm -rf "$LIB"' EXIT
+R CMD INSTALL --no-test-load --library="$LIB" . > /dev/null
+R_LIBS="$LIB" Rscript tools/benchmarks.R "${1:-10000000}"

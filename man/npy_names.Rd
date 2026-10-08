@@ -7,7 +7,8 @@
 npy_names(x, max_size = 2 * 1024^3, max_members = 10000)
 }
 \arguments{
-\item{x}{A raw vector holding a \code{.npz} file.}
+\item{x}{A raw vector holding a \code{.npz} file, or a path, URL or
+connection.}
 
 \item{max_size}{The largest input accepted, in bytes.}
 
@@ -18,8 +19,9 @@ A character vector: each member's name without its \code{.npy}
 suffix, in archive order, as \code{npy_decode()} names the list it returns.
 }
 \description{
-Reads the directory of a \code{.npz} archive held in a raw vector, without
-reading or inflating any member.
+Reads the directory of a \code{.npz} archive, without inflating or decoding
+any member. A path, URL or connection is read into memory first, bounded
+by \code{max_size}.
 }
 \examples{
 z <- npy_encode(list(a = 1:3, b = c(x = 0.5)))

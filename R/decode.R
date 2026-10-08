@@ -176,10 +176,12 @@ znp_classify <- function(value, descr, int64, datetime) {
 
 #' Read the header of a NumPy array
 #'
-#' Parses and checks a `.npy` header without reading its data, for a raw
-#' vector that holds at least the header.
+#' Parses and checks a `.npy` header without reading its data: from a raw
+#' vector that holds at least the header, or from a path, URL or connection,
+#' of which only the header's bytes are read.
 #'
-#' @param x A raw vector holding a `.npy` file, or its first bytes.
+#' @param x A raw vector holding a `.npy` file or its first bytes, or a
+#'   path, URL or connection.
 #' @inheritParams npy_decode
 #' @return A list: `version`, the format version as a string such as
 #'   `"1.0"`; `descr`, the dtype as a string such as `"<f8"`, or for a
@@ -197,6 +199,10 @@ znp_classify <- function(value, descr, int64, datetime) {
 #' npy_header(x)
 npy_header <- function(x, max_header = 10000) {
   call <- sys.call()
+  if (!is.raw(x)) {
+    max_header <- znp_check_count(max_header, "max_header", 0, 2^32 - 1, call)
+    x <- znp_read_header_bytes(x, max_header, call)
+  }
   p <- znp_header_check(x, max_size = 2^53, max_header = max_header,
                         max_dims = 64, header_only = TRUE, call = call)
   znp_header_warnings(p, call)

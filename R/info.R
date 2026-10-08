@@ -7,7 +7,8 @@
 #'   versions of their headers compiled in; `host_big_endian`, `TRUE` on a
 #'   big-endian host (files are read the same way on either); and
 #'   `selftest`, `TRUE` when one call into each provider header gave the
-#'   expected answer.
+#'   expected answer; and `fast_path`, `TRUE` when little-endian `f8`, `i4`
+#'   and `c16` data are copied whole rather than element by element.
 #' @export
 #' @examples
 #' zunpy_info()
@@ -18,6 +19,7 @@ zunpy_info <- function() {
     zubin = b[[1]],
     zufast = b[[2]],
     host_big_endian = b[[3]],
-    selftest = b[[4]]
+    selftest = b[[4]],
+    fast_path = b[[5]]
   )
 }

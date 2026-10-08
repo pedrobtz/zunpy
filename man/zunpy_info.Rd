@@ -11,7 +11,8 @@ A list: \code{version}, zunpy's version; \code{zubin} and \code{zufast}, the
 versions of their headers compiled in; \code{host_big_endian}, \code{TRUE} on a
 big-endian host (files are read the same way on either); and
 \code{selftest}, \code{TRUE} when one call into each provider header gave the
-expected answer.
+expected answer; and \code{fast_path}, \code{TRUE} when little-endian \code{f8}, \code{i4}
+and \code{c16} data are copied whole rather than element by element.
 }
 \description{
 Reports the versions of the provider headers zunpy was compiled against
