@@ -9,3 +9,5 @@ CRAN-SUBMISSION
 # fuzz working files
 fuzz/corpus/
 fuzz/artifacts/
+/doc/
+/Meta/

@@ -113,3 +113,10 @@ fixture_records <- function(row) {
   if (length(shape) != 1L) attr(df, "npy_shape") <- as.numeric(shape)
   df
 }
+
+# The dtypes of design section 6.1, the third copy of its table
+# (test-tables.R keeps the three in step).
+table_dtypes <- function() {
+  c("b1", "i1", "i2", "i4", "i8", "u1", "u2", "u4", "u8", "f2", "f4", "f8",
+    "c8", "c16", "S", "U", "V", "M8", "m8")
+}

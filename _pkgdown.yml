@@ -8,6 +8,11 @@ template:
 development:
   mode: auto
 
+articles:
+  - title: Guides
+    contents:
+      - zunpy
+
 reference:
   - title: Reading
     contents:
