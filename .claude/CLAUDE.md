@@ -13,7 +13,7 @@ Sibling checkouts are in `../`. `zucbor` is the model for the check-then-build s
 
 ## Current state
 
-**2026-10-08: Stages 0–5 done.** `npy_decode()` reads and `npy_encode()` writes every dtype of design §6.1 and §7.1 as raw vectors: numbers, booleans, complex, `S`/`U` strings, `V` bytes (read only), dates and times, and structured dtypes as data frames; `npy_header()` reads a header. The bytes written match `numpy.save()`'s. `.npz` and files are not built yet. Gates: `hardening.yaml` (lint, symbols, mutation check over 19 guards, fuzzing with its canary), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk) and `conformance.yaml` (fixtures regenerated with NumPy and checked against `np.load()`, and R-written files read by `np.load()`). zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
+**2026-10-08: Stages 0–6 done.** `npy_decode()` reads and `npy_encode()` writes every dtype of design §6.1 and §7.1 as raw vectors — numbers, booleans, complex, `S`/`U` strings, `V` bytes (read only), dates and times, structured dtypes as data frames — and `.npz` archives as named lists (`npy_names()` lists members); `npy_header()` reads a header. The bytes written match `numpy.save()`'s and, for stored archives, `numpy.savez()`'s. Files, URLs and connections (`npy_read()`, `npy_write()`) are not built yet. Gates: `hardening.yaml` (lint, symbols, mutation check over 27 guards in two files, two fuzz targets with canaries), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk) and `conformance.yaml` (fixtures regenerated with NumPy and checked against `np.load()`, and R-written files read by `np.load()`). zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
 
 Update this paragraph at the end of every stage.
 
@@ -55,7 +55,7 @@ The providers are not on CRAN: install them from the sibling checkouts (`R CMD I
 Gate scripts; those of Stages 0 and 1 exist, the rest arrive at the stage named. The check-phase gates find zufast's headers through `tools/zufast-include` (`$ZUFAST_INC`, else the installed package):
 
 ```sh
-tools/run-fuzz [secs]          # Stage 1: canary first, then fuzz_header under ASan+UBSan;
+tools/run-fuzz [secs]          # Stages 1, 6: each canary first, then fuzz_header and fuzz_zip under ASan+UBSan;
                                # macOS: FUZZ_CC=/opt/homebrew/opt/llvm/bin/clang
 tools/run-lint                 # Stage 1: -Wall -Wextra -Wpedantic -Wshadow -Werror on project C
 tools/check-symbols <so>       # Stage 0: only R_init_zunpy exported; no stdio/abort/exit
@@ -67,7 +67,7 @@ tools/run-benchmarks           # Stage 7: against readBin(), RcppCNPy, reticulat
 
 ## Architecture
 
-Planned layout, from design §4, §10 and §13. Today `src/` holds everything below except `znp_zip.c`.
+Planned layout, from design §4, §10 and §13. Today `src/` holds everything below.
 
 ```text
 R/            decode.R, header.R, encode.R, read.R, npz.R, structured.R, dtype.R,
@@ -84,9 +84,12 @@ src/          init.c          registration only
               znp_perm.c      C order <-> R order, one pass, both directions
               znp_text.c      S, U and V elements, both directions
               znp_time.c      datetime64 / timedelta64 counts <-> doubles, exact or refused
-              znp_zip.c       .npz records, CRC-32
+              znp_zip.h       the .npz directory check's R-free interface
+              znp_zip.c       .npz directory check (guards), CRC-32, the archive writer
+              znp_r_zip.c     .Call glue: the member table, CRC-32, building an archive
               Makevars        hand-listed OBJECTS, $(C_VISIBILITY)
-fuzz/         fuzz_header.c (-DZNP_FUZZ_CANARY builds the canary), probe.c, npy.dict, seeds/ (not in the tarball)
+fuzz/         fuzz_header.c, fuzz_zip.c (-DZNP_FUZZ_CANARY builds each canary), probe.c, npy.dict,
+              seeds/, seeds-zip/ (not in the tarball)
 tools/        make-fixtures.py, conformance.py, conformance-write.R and the gate scripts above
 tests/testthat/fixtures/npy/   NumPy-written files and MANIFEST.tsv
 .agents/      design.md, roadmap.md
@@ -99,6 +102,8 @@ Reading is two phases, as in zucbor. Bytes (from `npy_decode()`, or `npy_read()`
 - **Nothing is allocated from a header field.** The build phase allocates only from the plan, whose sizes the check phase has compared with the input length. A header claiming `(2**40, 2**40)` must cost nothing (design §12).
 - **The header parser is a grammar, never an evaluator.** No identifiers, no arithmetic; recursion capped at depth 8. A valid Python expression outside design §9.2 is a parse error (D12).
 - **The check phase never allocates.** It runs in two calls so the caller sizes the scratch from a header length already bounded by `max_header` and the bytes present; anything new the parser stores goes in that scratch, sized in `scratch_layout()`.
+- **`do.call()` with a `call` argument needs `quote = TRUE`**, or the stored call is evaluated and the caller's expression runs again.
+- **zukomp's `max_output = 0` means no cap.** Inflate a member with `max(usize, 1)` and then check the length.
 - **A guard's `if` is one line.** `tools/run-mutation-check` mutates it with `sed`; a condition split across lines cannot be mutated and fails the check. Each guard needs a case in `tools/mutation-cases.R`.
 - **The check phase contains no R.** `znp_header.c` never includes `R.h`; the fuzz build (`-DZNP_STANDALONE`) compiles it standalone.
 - **Guards carry `/* GUARD: name */`** on their `if` lines and a `test_that("GUARD name")` each; `tools/run-mutation-check` proves each one is load-bearing. A new guard without its test does not count.

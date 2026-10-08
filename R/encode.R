@@ -38,6 +38,13 @@
 #' records with other than one dimension carries `npy_shape`, and is written
 #' back with that shape. Field names must be non-empty and unique.
 #'
+#' A named list is written as a `.npz`: a ZIP archive holding each element
+#' as `<name>.npy`, in list order, stored, or compressed with DEFLATE when
+#' `compress = TRUE` (what `numpy.savez_compressed()` writes). Names must be
+#' non-empty and unique, and may not hold a path separator or start with
+#' `..`. The archive is deterministic: every member is dated 1980-01-01, as
+#' NumPy dates them. `dtype` is then a list named by elements.
+#'
 #' A matrix or array is written in R's own (Fortran) order with
 #' `fortran_order` set, which costs no copy; `order = "C"` writes C order
 #' for readers that need it. `dimnames` and names are dropped. A length-1
@@ -45,7 +52,8 @@
 #'
 #' @param x A logical, integer, double, complex, raw or character vector,
 #'   matrix or array, a factor, a `Date`, `POSIXct` or `difftime` vector, a
-#'   `bit64::integer64` vector, or a data frame of such columns.
+#'   `bit64::integer64` vector, a data frame of such columns, or a named list
+#'   of any of these.
 #' @param dtype `NULL` for the default of the R type; for a data frame, a
 #'   named character vector of dtypes for some of its columns; else a NumPy
 #'   dtype string: `"|b1"`, `"|i1"`, `"<i2"`, `"<i4"`, `"<i8"`, `"|u1"`, `"<u2"`,
@@ -58,7 +66,9 @@
 #'   Latin-1 form is an error), and `"bytes"` writes the bytes as they are.
 #' @param unit The unit for `POSIXct`: `"us"` (the default), `"ns"`, `"ms"`
 #'   or `"s"`.
-#' @return A raw vector holding a whole `.npy` file.
+#' @param compress For a list (a `.npz`), whether to compress the members.
+#' @return A raw vector holding a whole `.npy` file, or a `.npz` file for a
+#'   list.
 #' @seealso [npy_decode()] to read it back.
 #' @export
 #' @examples
@@ -70,13 +80,26 @@
 npy_encode <- function(x, dtype = NULL, order = c("F", "C"),
                        na = c("error", "allow"),
                        encoding = c("UTF-8", "latin1", "bytes"),
-                       unit = c("us", "ns", "ms", "s")) {
+                       unit = c("us", "ns", "ms", "s"), compress = FALSE) {
   call <- sys.call()
   order <- znp_match(order, c("F", "C"), "order", call)
   na <- znp_match(na, c("error", "allow"), "na", call)
   encoding <- znp_match(encoding, c("UTF-8", "latin1", "bytes"), "encoding",
                         call)
   unit <- znp_match(unit, c("us", "ns", "ms", "s"), "unit", call)
+  if (!is.logical(compress) || length(compress) != 1L || is.na(compress)) {
+    znp_invalid_argument("compress", "`compress` must be TRUE or FALSE.",
+                         call = call)
+  }
+  if (is.list(x) && !is.data.frame(x)) {
+    return(znp_npz_encode(x, dtype, compress, list(
+      order = order, na = na, encoding = encoding, unit = unit
+    ), call))
+  }
+  if (compress) {
+    znp_invalid_argument("compress", "`compress` applies to a .npz (a list)",
+                         call = call)
+  }
   if (is.data.frame(x)) {
     return(znp_encode_records(x, dtype, order, na, encoding, unit, call))
   }

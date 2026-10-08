@@ -16,6 +16,8 @@ URL: https://pedrobtz.github.io/zunpy/, https://github.com/pedrobtz/zunpy
 BugReports: https://github.com/pedrobtz/zunpy/issues
 Depends: 
     R (>= 4.1)
+Imports: 
+    zukomp (>= 0.1.0)
 LinkingTo: 
     zubin (>= 0.0.0.9000),
     zufast (>= 0.1.0)
@@ -27,7 +29,8 @@ Suggests:
     withr
 Remotes: 
     pedrobtz/zubin@main,
-    pedrobtz/zufast@main
+    pedrobtz/zufast@main,
+    pedrobtz/zukomp@main
 Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-GB

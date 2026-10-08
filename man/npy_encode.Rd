@@ -10,13 +10,15 @@ npy_encode(
   order = c("F", "C"),
   na = c("error", "allow"),
   encoding = c("UTF-8", "latin1", "bytes"),
-  unit = c("us", "ns", "ms", "s")
+  unit = c("us", "ns", "ms", "s"),
+  compress = FALSE
 )
 }
 \arguments{
 \item{x}{A logical, integer, double, complex, raw or character vector,
 matrix or array, a factor, a \code{Date}, \code{POSIXct} or \code{difftime} vector, a
-\code{bit64::integer64} vector, or a data frame of such columns.}
+\code{bit64::integer64} vector, a data frame of such columns, or a named list
+of any of these.}
 
 \item{dtype}{\code{NULL} for the default of the R type; for a data frame, a
 named character vector of dtypes for some of its columns; else a NumPy
@@ -34,9 +36,12 @@ Latin-1 form is an error), and \code{"bytes"} writes the bytes as they are.}
 
 \item{unit}{The unit for \code{POSIXct}: \code{"us"} (the default), \code{"ns"}, \code{"ms"}
 or \code{"s"}.}
+
+\item{compress}{For a list (a \code{.npz}), whether to compress the members.}
 }
 \value{
-A raw vector holding a whole \code{.npy} file.
+A raw vector holding a whole \code{.npy} file, or a \code{.npz} file for a
+list.
 }
 \description{
 Encodes an R vector, matrix or array as a \code{.npy} file in a raw vector.
@@ -77,6 +82,13 @@ then be a named character vector giving the dtype of some columns. Row
 names are dropped. A data frame that \code{\link[=npy_decode]{npy_decode()}} made from an array of
 records with other than one dimension carries \code{npy_shape}, and is written
 back with that shape. Field names must be non-empty and unique.
+
+A named list is written as a \code{.npz}: a ZIP archive holding each element
+as \verb{<name>.npy}, in list order, stored, or compressed with DEFLATE when
+\code{compress = TRUE} (what \code{numpy.savez_compressed()} writes). Names must be
+non-empty and unique, and may not hold a path separator or start with
+\code{..}. The archive is deterministic: every member is dated 1980-01-01, as
+NumPy dates them. \code{dtype} is then a list named by elements.
 
 A matrix or array is written in R's own (Fortran) order with
 \code{fortran_order} set, which costs no copy; \code{order = "C"} writes C order

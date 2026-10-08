@@ -33,7 +33,7 @@ for f in src/*.c; do
   $CC $FLAGS $extra $INC "$f" || fail=1
 done
 # The R-free build of the check phase, as the fuzzer and probe compile it.
-for f in src/znp_header.c fuzz/*.c; do
+for f in src/znp_header.c src/znp_zip.c fuzz/*.c; do
   # shellcheck disable=SC2086
   $CC $FLAGS -DZNP_STANDALONE -isystem "$ZUFAST" -Isrc "$f" || fail=1
 done

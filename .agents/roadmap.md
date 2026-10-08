@@ -286,7 +286,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 ## Stage 6 — `.npz` · M
 
-**Status:** not started.
+**Status:** done 2026-10-08 ([#9](https://github.com/pedrobtz/zunpy/issues/9)).
 
 **Goal:** ZIP archives of `.npy` members, read and written, safely and deterministically.
 
@@ -304,6 +304,17 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 - Stored and deflated `.npz` from `numpy.savez` and `numpy.savez_compressed` read; ZIP64 fixtures read; `names =` touches only the named member.
 - Two writes of the same list are byte-identical, and NumPy loads them.
 - Every hostile archive is refused with its class.
+
+**What actually happened**
+
+- The directory check is R-free C (`src/znp_zip.c`) like the header check: eight guards, each with a mutation case built by a pure-R ZIP writer in `tools/npy-bytes.R`, and a second fuzz target, `fuzz/fuzz_zip.c`, with its own canary and seeds (`fuzz/seeds-zip`); `hardening.yaml` fuzzes both. Two checks the mutation check showed to be shadowed by earlier ones stay as unmarked defence in depth.
+- Writing matches `numpy.savez()` byte for byte for stored archives once the member dtypes and order match: NumPy 2.3.3 forces ZIP64 extras into every local header and dates everything 1980-01-01, which makes its output deterministic too (design §10).
+- `npy_encode()` writes a named list as a `.npz` to a raw vector, and `npy_decode()` reads one; `npy_names()` lists the members. Design §7.1 said `npy_encode()` refuses lists; it now follows the roadmap.
+- Fixtures: stored, compressed, positional (`arr_0`), empty, and a hand-built archive using every ZIP64 directory record, all read by `np.load()` in the conformance job; R-written archives too.
+- §18 Q3 is decided: names that are paths are refused on write.
+- A member error names the member (`e$member`); zukomp's own conditions become zunpy's: a stream inflating past its declared size is `zunpy_invalid_error`, a broken one `zunpy_parse_error`.
+- The mutation check builds its probes with AddressSanitizer and reads each case into an exact-size heap buffer: without it, a mutant reading out of bounds crashed or not depending on the memory layout, and the gate flickered.
+- A bug in this stage's own refactor, caught by the tests: `do.call()` evaluates a `call` object passed as an argument, which re-ran the caller's expression; every internal `do.call()` now has `quote = TRUE`.
 
 ---
 

@@ -38,3 +38,22 @@ npy_dict <- function(descr, shape = "(1,)", fortran = "False") {
 check_dict <- function(dict, data = raw(), ...) {
   znp_header_check(npy_header_bytes(dict, data, ...))
 }
+
+# The 0-based offsets where a 4-byte little-endian signature starts.
+find_sig <- function(x, sig) {
+  b <- as.raw(c(sig %% 256, (sig %/% 256) %% 256, (sig %/% 65536) %% 256,
+                sig %/% 16777216))
+  n <- length(x) - 3
+  if (n < 1) return(integer())
+  which(x[1:n] == b[1] & x[2:(n + 1)] == b[2] & x[3:(n + 2)] == b[3] &
+          x[4:(n + 3)] == b[4]) - 1L
+}
+
+# Writes a little-endian unsigned value of `width` bytes at a 0-based offset.
+put_le <- function(x, offset, value, width) {
+  for (i in seq_len(width)) {
+    x[offset + i] <- as.raw(value %% 256)
+    value <- value %/% 256
+  }
+  x
+}

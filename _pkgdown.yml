@@ -13,6 +13,7 @@ reference:
     contents:
       - npy_decode
       - npy_header
+      - npy_names
   - title: Writing
     contents:
       - npy_encode

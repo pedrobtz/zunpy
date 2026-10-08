@@ -1,6 +1,7 @@
-# Writes one hostile input per GUARD in src/znp_header.c to the directory
-# given, and prints the case table tools/run-mutation-check reads:
-#   guard|file|max_size max_header max_dims max_fields|status with the guard
+# Writes one hostile input per GUARD in src/znp_header.c and src/znp_zip.c
+# to the directory given, and prints the case table tools/run-mutation-check
+# reads:
+#   guard|file|max_size max_header max_dims max_fields [max_members]|status
 source("tools/npy-bytes.R")
 out <- commandArgs(TRUE)[1]
 dir.create(out, showWarnings = FALSE, recursive = TRUE)
@@ -56,6 +57,41 @@ cases <- list(
   list("trailing", npy_header_bytes(npy_dict("'<f8'", "(2,)"), raw(17)),
        dflt, "ZNP_ERR_TRAILING")
 )
+# The .npz directory (src/znp_zip.c). The probe reads a "PK" file as an
+# archive, with max_size and, as a sixth argument, max_members.
+member <- npy_header_bytes(npy_dict("'<f8'"), raw(8))
+two <- zip_bytes(list(a.npy = member, b.npy = member))
+put <- function(x, at, value, width) {
+  x[at + seq_len(width)] <- le(value, width)
+  x
+}
+cd <- length(two) - 22 - 2 * (46 + 5)      # where the central directory starts
+one <- zip_bytes(list(a.npy = member))
+cd1 <- length(one) - 22 - (46 + 5)
+eocd <- length(two) - 22
+big <- 2^40
+zdflt <- "1000000 10000 32 1024 10000"
+cases <- c(cases, list(
+  list("zip-input-size", two, sprintf("%d 10000 32 1024 10000", length(two) - 1),
+       "ZNP_ERR_SIZE_LIMIT"),
+  list("members", two, "1000000 10000 32 1024 1", "ZNP_ERR_MEMBERS_LIMIT"),
+  # Stored members cannot declare more than the archive holds; a deflated
+  # one can, which is what the total is for.
+  list("declared-total", put(put(two, cd + 10, 8, 2), cd + 24, 2^31, 4), zdflt,
+       "ZNP_ERR_SIZE_LIMIT"),
+  list("directory-bounds", put(two, eocd + 16, 2^31, 4), zdflt, "ZNP_ERR_ZIP"),
+  # One member, so that no later entry's checks catch the overrun instead.
+  list("entry-names", put(one, cd1 + 28, 60000, 2), zdflt, "ZNP_ERR_ZIP"),
+  list("local-bounds", put(two, cd + 42, 2^31, 4), zdflt, "ZNP_ERR_ZIP"),
+  list("member-bounds", put(put(two, cd + 20, 2^31, 4), cd + 24, 2^31, 4),
+       "1000000000000 10000 32 1024 10000", "ZNP_ERR_ZIP"),
+  list("zip64-record", c(two[seq_len(eocd)], le(0x07064b50, 4), le(0, 4),
+                         le(big, 8), le(1, 4),
+                         put(put(put(two[eocd + seq_len(22)], 16, 0xFFFFFFFF, 4),
+                                 8, 0xFFFF, 2), 10, 0xFFFF, 2)),
+       zdflt, "ZNP_ERR_ZIP")
+))
+
 for (k in cases) {
   f <- file.path(out, paste0(k[[1]], ".npy"))
   writeBin(k[[2]], f)

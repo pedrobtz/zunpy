@@ -56,6 +56,10 @@ SEXP zunpy_build_info(void);
 SEXP zunpy_header_check(SEXP x, SEXP limits);
 SEXP zunpy_decode(SEXP x, SEXP limits, SEXP opts);
 SEXP zunpy_encode(SEXP x, SEXP spec, SEXP shape, SEXP opts);
+SEXP zunpy_zip_members(SEXP x, SEXP limits);
+SEXP zunpy_crc32(SEXP x);
+SEXP zunpy_zip_build(SEXP names, SEXP methods, SEXP crcs, SEXP usizes,
+                     SEXP payloads);
 SEXP zunpy_encode_records(SEXP cols, SEXP specs, SEXP names, SEXP shape,
                           SEXP opts, SEXP int64s);
 

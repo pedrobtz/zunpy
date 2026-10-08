@@ -5,10 +5,11 @@
 #             the installed shared object exports only R_init_zunpy and no
 #             console or exit symbols (tools/check-symbols); every guard in
 #             src/znp_header.c is load-bearing (tools/run-mutation-check)
-#   canary    fuzz_header built to trap on any accepted header must crash
-#   fuzz      libFuzzer over the R-free check phase, from fuzz/seeds and a
-#             corpus cached between runs: 5 minutes per push, an hour
-#             nightly
+#   canary    fuzz_header and fuzz_zip built to trap on any accepted input
+#             must crash
+#   fuzz      libFuzzer over the R-free check phase (fuzz/seeds) and the
+#             .npz directory check (fuzz/seeds-zip), corpora cached between
+#             runs: 5 minutes each per push, an hour each nightly
 on:
   push:
     branches: [main, master]
@@ -75,5 +76,16 @@ jobs:
       cflags: -g -O1 -fno-omit-frame-pointer -fno-sanitize-recover=undefined -UNDEBUG -DZNP_STANDALONE -Isrc -I.github-packages/zufast/inst/include
       seed-corpus: fuzz/seeds
       dictionary: fuzz/npy.dict
+      libfuzzer-args: -max_len=65536
+      max-total-time: ${{ github.event_name == 'schedule' && 3600 || 300 }}
+
+  fuzz-zip:
+    uses: pedrobtz/r-actions/.github/workflows/fuzz.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+    with:
+      harness: fuzz/fuzz_zip.c
+      sources: src/znp_zip.c
+      github-packages: pedrobtz/zufast
+      cflags: -g -O1 -fno-omit-frame-pointer -fno-sanitize-recover=undefined -UNDEBUG -DZNP_STANDALONE -Isrc -I.github-packages/zufast/inst/include
+      seed-corpus: fuzz/seeds-zip
       libfuzzer-args: -max_len=65536
       max-total-time: ${{ github.event_name == 'schedule' && 3600 || 300 }}
