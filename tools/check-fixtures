@@ -1,0 +1,22 @@
+#!/bin/sh
+# Regenerates the NumPy fixtures in a scratch directory with the pinned
+# NumPy and requires them byte-identical to the committed ones (design
+# section 15), then checks every MANIFEST row against np.load() of its file
+# (tools/conformance.py). Run from the package root. Needs uv, or set
+# PYTHON to an interpreter that has the pinned NumPy.
+set -eu
+
+NUMPY=$(sed -n 's/^NUMPY = "\(.*\)"$/\1/p' tools/make-fixtures.py)
+PY=${PYTHON:-"uv run --no-project --with numpy==$NUMPY python"}
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+# shellcheck disable=SC2086
+ZNP_FIXTURES_OUT="$WORK/npy" $PY tools/make-fixtures.py
+if ! diff -r tests/testthat/fixtures/npy "$WORK/npy"; then
+  echo "FAIL: the committed fixtures differ from NumPy $NUMPY's output" >&2
+  exit 1
+fi
+echo "==> fixtures are byte-identical to NumPy $NUMPY's output"
+# shellcheck disable=SC2086
+$PY tools/conformance.py tests/testthat/fixtures/npy

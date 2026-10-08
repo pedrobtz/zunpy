@@ -37,6 +37,12 @@
 #'     written.}
 #' }
 #'
+#' Warnings inherit from `zunpy_warning`: `zunpy_byte_order` when a dtype
+#' gives its byte order as native (`=`) or not at all, which NumPy never
+#' writes and which is read as little-endian; and `zunpy_alignment` when
+#' the data starts at a multiple of 16 bytes but not of 64, as files from
+#' NumPy before 1.14 and from other writers do.
+#'
 #' @name zunpy-conditions
 #' @examples
 #' e <- tryCatch(
@@ -114,11 +120,20 @@ znp_io_error <- function(message, call = NULL) {
   znp_abort("zunpy_io_error", message, call = call)
 }
 
+znp_warn <- function(class, message, call = NULL) {
+  warning(structure(
+    class = c(class, "zunpy_warning", "warning", "condition"),
+    list(message = message, call = call)
+  ))
+}
+
 # A status name from C -> a condition, by the enumerator's name. offset is
 # the 0-based byte offset of the fault in x. Statuses that only misuse of
 # the internal API can cause map to the bare zunpy_error: still catchable,
 # never mistaken for a fault in the input.
+# index (1-based, file order) and descr come from the build phase.
 znp_raise_status <- function(status, offset, x, limits, member = NULL,
+                             index = NA_real_, descr = NA_character_,
                              call = NULL) {
   parse <- c(
     ZNP_ERR_MAGIC = "not a .npy file: the magic string is wrong",
@@ -154,6 +169,24 @@ znp_raise_status <- function(status, offset, x, limits, member = NULL,
     ), member = member, call = call)
   }
   switch(status,
+    ZNP_BUILD_NA = znp_na_error(
+      index, sprintf("element %s is NA in R; use `na = \"allow\"` to keep it",
+                     format(index, scientific = FALSE)),
+      member = member, call = call
+    ),
+    ZNP_BUILD_UNREPRESENTABLE = znp_unrepresentable(
+      if (is.na(index)) {
+        "a dimension is larger than R's 2^31 - 1"
+      } else {
+        sprintf("element %s cannot be held exactly; see `int64`",
+                format(index, scientific = FALSE))
+      },
+      offset = offset, index = index, member = member, call = call
+    ),
+    ZNP_BUILD_NOT_YET = znp_unsupported_type(
+      descr, sprintf("dtype '%s' is not supported yet", descr),
+      member = member, call = call
+    ),
     ZNP_ERR_LAYOUT = znp_invalid_error(
       offset, paste0("the record fields overlap or do not fit", at),
       member = member, call = call

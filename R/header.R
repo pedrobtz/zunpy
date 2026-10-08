@@ -2,9 +2,11 @@
 # or a classed condition. Stage 2's npy_header() and npy_decode() are built
 # on it.
 znp_header_check <- function(x, max_size = 2 * 1024^3, max_header = 10000,
-                             max_dims = 32, max_fields = 1024, call = NULL) {
+                             max_dims = 32, max_fields = 1024,
+                             header_only = FALSE, call = NULL) {
   znp_check_raw(x, call = call)
-  limits <- znp_limits(max_size, max_header, max_dims, max_fields, call)
+  limits <- znp_limits(max_size, max_header, max_dims, max_fields,
+                       header_only, call)
   res <- .Call(zunpy_header_check, x, limits)
   if (res$status != "ZNP_OK") {
     znp_raise_status(res$status, res$offset, x, limits, call = call)

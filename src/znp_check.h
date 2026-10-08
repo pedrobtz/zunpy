@@ -63,6 +63,8 @@ typedef struct {
     uint64_t max_header;    /* bytes of the header dict */
     int      max_dims;      /* 0 .. ZNP_MAX_DIMS_CAP */
     int      max_fields;    /* 1 .. */
+    int      header_only;   /* 1: the input may stop after the header, as for
+                               npy_header() on a file; the data is not compared */
 } znp_limits;
 
 /* Where and why the check stopped. offset is 0-based into the input. */

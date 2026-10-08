@@ -18,6 +18,12 @@ static SEXP descr_string(const znp_dtype *dt)
     return Rf_mkCharCE(buf, CE_UTF8);
 }
 
+SEXP znp_descr_sexp(const znp_plan *plan)
+{
+    return plan->structured ? Rf_ScalarString(NA_STRING)
+                            : Rf_ScalarString(descr_string(&plan->dtype));
+}
+
 static SEXP dims(const uint64_t *shape, int n)
 {
     SEXP out = PROTECT(Rf_allocVector(REALSXP, n));
@@ -59,14 +65,21 @@ static SEXP fields_list(const znp_plan *plan)
     return out;
 }
 
-/* limits: c(max_size, max_header, max_dims, max_fields), checked in R. */
+/* limits: c(max_size, max_header, max_dims, max_fields, header_only),
+   checked in R. */
+void znp_limits_from_r(SEXP limits, znp_limits *lim)
+{
+    lim->max_size = (uint64_t)REAL(limits)[0];
+    lim->max_header = (uint64_t)REAL(limits)[1];
+    lim->max_dims = (int)REAL(limits)[2];
+    lim->max_fields = (int)REAL(limits)[3];
+    lim->header_only = REAL(limits)[4] != 0;
+}
+
 SEXP zunpy_header_check(SEXP x, SEXP limits)
 {
     znp_limits lim;
-    lim.max_size = (uint64_t)REAL(limits)[0];
-    lim.max_header = (uint64_t)REAL(limits)[1];
-    lim.max_dims = (int)REAL(limits)[2];
-    lim.max_fields = (int)REAL(limits)[3];
+    znp_limits_from_r(limits, &lim);
 
     const uint8_t *data = RAW(x);
     size_t size = (size_t)XLENGTH(x);
@@ -105,8 +118,7 @@ SEXP zunpy_header_check(SEXP x, SEXP limits)
     SET_VECTOR_ELT(out, 6, dims(plan.shape, plan.ndim));
     SET_VECTOR_ELT(out, 7, Rf_ScalarReal((double)plan.count));
     SET_VECTOR_ELT(out, 8, Rf_ScalarReal((double)plan.itemsize));
-    SET_VECTOR_ELT(out, 9, plan.structured ? Rf_ScalarString(NA_STRING)
-                                           : Rf_ScalarString(descr_string(&plan.dtype)));
+    SET_VECTOR_ELT(out, 9, znp_descr_sexp(&plan));
     SET_VECTOR_ELT(out, 10, plan.structured ? fields_list(&plan) : R_NilValue);
     SET_VECTOR_ELT(out, 11, Rf_ScalarLogical(plan.native_order));
     SET_VECTOR_ELT(out, 12, Rf_ScalarLogical(plan.align64));

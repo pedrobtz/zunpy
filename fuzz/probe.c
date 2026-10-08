@@ -26,6 +26,7 @@ int main(int argc, char **argv)
     lim.max_header = strtoull(argv[3], NULL, 10);
     lim.max_dims = atoi(argv[4]);
     lim.max_fields = atoi(argv[5]);
+    lim.header_only = 0;
 
     znp_plan plan;
     znp_fault fault;

@@ -150,7 +150,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 ## Stage 2 — Reading plain arrays · M
 
-**Status:** not started.
+**Status:** done 2026-10-08 ([#5](https://github.com/pedrobtz/zunpy/issues/5)).
 
 **Goal:** every numeric, boolean and complex row of §6.1 reads from a NumPy-written file, in both byte orders and both memory orders, with nothing allocated before the check phase passes.
 
@@ -169,6 +169,18 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 - Sanitizers, valgrind, rchk and gctorture clean; the forced-big-endian build passes.
 
 **Not this stage:** strings, dates, structured dtypes, `.npz`, files and connections.
+
+**What actually happened**
+
+- The build phase (`src/znp_build.c`) converts through zubin's unpack kernels (`zb_unpack_i32`, `zb_unpack_f64`, `zb_unpack_f64x`, `zb_unpack_i64` in `zubin/layout.h`) with one synthesised field and the itemsize as stride, so the NA and exactness rules are zubin's own; complex values are two `zb_rd_f32`/`zb_rd_f64` reads. Conversion runs in chunks of 2^20 elements with an interrupt check between them.
+- 62 fixtures from NumPy 2.3.3: 14 dtypes, both byte orders, C and Fortran order, plus shapes and edge values. The MANIFEST records every value in C order, floats as `float.hex()`: R's `as.numeric("1.7976931348623157e+308")` is `Inf`, while hex is read exactly.
+- **The oracle is the MANIFEST, not `reticulate`** (design §15): `tools/conformance.py` checks each row against `np.load()` in `conformance.yaml`, and the R suite checks `npy_decode()` against the rows everywhere. `reticulate` left the design.
+- The conformance script caught two fixture-generator bugs before they reached a test: `np.ascontiguousarray()` turns a 0-d array 1-d, and NumPy writes an empty array as C order whatever was asked.
+- A product of dimensions above `2^31 - 1` is fine with `dim`: R holds long arrays. Design §6.2 is corrected; only a single dimension above `2^31 - 1` is refused.
+- `-DZNP_FORCE_BE_HOST` moves to Stage 7: nothing depends on the host's byte order until the `memcpy` fast path exists.
+- `npy_header()` reads a raw vector that may stop after the header: the check phase gained a `header_only` limit that skips the data comparison but not the size limits. Paths arrive at Stage 7.
+- The check phase's limits now include `header_only`; the fuzz seeds include every fixture.
+- `zunpy_byte_order` and `zunpy_alignment` warnings, classed under `zunpy_warning`.
 
 ---
 

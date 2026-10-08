@@ -1031,6 +1031,8 @@ znp_status znp_check(const uint8_t *data, size_t size,
         return fail(fault, ZNP_ERR_SIZE_LIMIT, plan->header_offset);
     if (plan->data_bytes > lim->max_size) /* GUARD: declared-size */
         return fail(fault, ZNP_ERR_SIZE_LIMIT, plan->header_offset);
+    if (lim->header_only)
+        return ZNP_OK;
     if (plan->data_bytes > avail) /* GUARD: data-truncated */
         return fail(fault, ZNP_ERR_TRUNCATED, size);
     if (plan->data_bytes < avail) /* GUARD: trailing */

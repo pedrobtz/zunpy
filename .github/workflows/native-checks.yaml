@@ -1,0 +1,57 @@
+# The package under UBSan, ASan, valgrind, LTO, gctorture and a blocking
+# rchk (roadmap Stage 2). Quick on each push to a pull request, full after
+# merge; the full-ci label runs the full set on a pull request.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    # Weekly, so a latent problem surfaces without waiting for a push.
+    - cron: "0 4 * * 4"
+  workflow_dispatch:
+
+name: native-checks
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  sanitizers:
+    uses: pedrobtz/r-actions/.github/workflows/sanitizers.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+    with:
+      asan: true
+      profile: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci') && 'quick' || 'full' }}
+
+  valgrind:
+    uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+    with:
+      profile: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci') && 'quick' || 'full' }}
+
+  lto:
+    uses: pedrobtz/r-actions/.github/workflows/lto.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+
+  # ZUNPY_SKIP_HEAVY skips the large-input cases: they test values, not
+  # PROTECT discipline, and under gctorture they would take hours.
+  gctorture:
+    uses: pedrobtz/r-actions/.github/workflows/gctorture.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+    with:
+      profile: ${{ github.event_name == 'pull_request' && 'quick' || 'full' }}
+      timeout-minutes: 240
+      env: |
+        ZUNPY_SKIP_HEAVY=true
+
+  # Blocking from the first run: the C code is new, so any finding is ours.
+  # zubin and zufast (LinkingTo) are not on CRAN, which is all the rchk image
+  # installs from: github-packages installs them first. Drop them once both
+  # are on CRAN.
+  rchk:
+    uses: pedrobtz/r-actions/.github/workflows/rchk.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+    with:
+      fail-on-findings: true
+      github-packages: |
+        pedrobtz/zufast
+        pedrobtz/zubin

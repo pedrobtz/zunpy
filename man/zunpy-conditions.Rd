@@ -38,6 +38,12 @@ argument's name, and \code{limit_value}. Its subclasses are
 \item{\code{zunpy_io_error}}{A file or connection could not be read or
 written.}
 }
+
+Warnings inherit from \code{zunpy_warning}: \code{zunpy_byte_order} when a dtype
+gives its byte order as native (\code{=}) or not at all, which NumPy never
+writes and which is read as little-endian; and \code{zunpy_alignment} when
+the data starts at a multiple of 16 bytes but not of 64, as files from
+NumPy before 1.14 and from other writers do.
 }
 \examples{
 e <- tryCatch(
