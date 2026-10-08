@@ -1,4 +1,6 @@
-# zunpy 0.0.0.9000
+# zunpy 0.1.0
+
+First release.
 
 * A vignette, `vignette("zunpy")`: arrays between R and Python.
 * `npy_read()` and `npy_write()` read and write `.npy` and `.npz` files at a
