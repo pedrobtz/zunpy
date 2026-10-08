@@ -19,6 +19,9 @@ FILES="src/znp_header.c src/znp_zip.c"
 # AddressSanitizer makes a mutant that reads out of bounds fail every time,
 # rather than when the memory layout happens to fault.
 SAN=${MUTATION_SAN:--fsanitize=address -fno-omit-frame-pointer}
+# A leak is not what a mutant is checked for, and LeakSanitizer (on Linux)
+# would turn the original's exit status into a failure.
+export ASAN_OPTIONS=detect_leaks=0
 
 build() {  # build DIR OUT
   # shellcheck disable=SC2086

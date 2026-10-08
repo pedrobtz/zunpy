@@ -51,6 +51,7 @@ int main(int argc, char **argv)
             free(m);
         }
         printf("%s\n", znp_status_name(zs));
+        free(buf);
         return 0;
     }
 
@@ -64,5 +65,6 @@ int main(int argc, char **argv)
         free(scratch);
     }
     printf("%s\n", znp_status_name(st));
+    free(buf);
     return 0;
 }
