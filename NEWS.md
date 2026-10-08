@@ -1,5 +1,6 @@
 # zunpy 0.0.0.9000
 
+* A vignette, `vignette("zunpy")`: arrays between R and Python.
 * `npy_read()` and `npy_write()` read and write `.npy` and `.npz` files at a
   path, a URL or a connection, bounded by `max_size`; `npy_header()` and
   `npy_names()` take them too. Reading and writing a file are within 10%

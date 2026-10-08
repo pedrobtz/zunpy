@@ -13,3 +13,5 @@
 ^src/.*\.so$
 ^src/.*\.dll$
 ^src/.*\.dylib$
+^doc$
+^Meta$

@@ -13,7 +13,7 @@ Sibling checkouts are in `../`. `zucbor` is the model for the check-then-build s
 
 ## Current state
 
-**2026-10-08: Stages 0–7 done.** The whole API of design §5 exists: `npy_read()`/`npy_write()` over paths, URLs and connections, `npy_decode()`/`npy_encode()` over raw vectors, `npy_header()`, `npy_names()`, `npy_dtype()`, `zunpy_info()`. Every dtype of §6.1 and §7.1 both ways (structured as data frames, `.npz` as named lists); bytes written match `numpy.save()`'s and, stored, `numpy.savez()`'s. Benchmarks are recorded in design §16. Left: Stage 8 (hardening and documentation: the vignette, `cran-comments.md`, the `RcppCNPy` tests) and Stage 9 (release, blocked on zufast, zubin and zukomp reaching CRAN, *verified 2026-10-08*). Gates: `hardening.yaml` (lint, symbols, mutation check over 27 guards in two files, two fuzz targets with canaries), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk, a forced-big-endian build) and `conformance.yaml`. Tracking: parent #2, stages #3–#12.
+**2026-10-08: Stages 0–8 done.** The whole API of design §5 exists and is documented, with a vignette (`vignette("zunpy")`) and a real README: `npy_read()`/`npy_write()` over paths, URLs and connections, `npy_decode()`/`npy_encode()` over raw vectors, `npy_header()`, `npy_names()`, `npy_dtype()`, `zunpy_info()`. Every dtype of §6.1 and §7.1 both ways (structured as data frames, `.npz` as named lists); bytes written match `numpy.save()`'s and, stored, `numpy.savez()`'s. Benchmarks are in design §16. Left: Stage 9, the release, blocked on zufast, zubin and zukomp reaching CRAN (*verified 2026-10-08*), and on a week of clean nightly fuzzing (roadmap Stage 8, deviations). Gates: `hardening.yaml` (lint, symbols, mutation check over 27 guards in two files, two fuzz targets with canaries), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk, a forced-big-endian build) and `conformance.yaml`. Tracking: parent #2, stages #3–#12.
 
 Update this paragraph at the end of every stage.
 
@@ -156,6 +156,8 @@ Reading is two phases, as in zucbor. Bytes (from `npy_decode()`, or `npy_read()`
 
 - roxygen comments are the source. Never edit `man/` or `NAMESPACE` by hand.
 - There is no `README.Rmd`; edit `README.md` directly and run its example.
+- The vignette is `vignettes/zunpy.Rmd`; a chunk that needs a `Suggests` package runs only where it is installed.
+- Spelling: `spelling::spell_check_package(".")`; new words go in `inst/WORDLIST` through `spelling::update_wordlist()`. `spell_check_setup()` sets `Language: en-US`; keep `en-GB`.
 - Prose is simple, short and en-GB (`Language: en-GB`, `inst/WORDLIST`).
 - Wrap roxygen at 80 characters; `air format .` on R sources.
 - `lower_snake_case`; the naming table above.

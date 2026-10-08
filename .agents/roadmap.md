@@ -347,7 +347,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 ## Stage 8 — Hardening and documentation · M
 
-**Status:** not started.
+**Status:** done 2026-10-08 ([#11](https://github.com/pedrobtz/zunpy/issues/11)), with the deviations below.
 
 **Goal:** every gate green on every leg, and the package explained.
 
@@ -363,6 +363,16 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 - Every workflow green on `main`; the conformance job green against the pinned NumPy.
 - `devtools::check(cran = TRUE)` 0/0/0 with only the new-submission note.
+
+**What actually happened**
+
+- The README is real now (the template's placeholders are gone), and the vignette "Arrays between R and Python" (`vignette("zunpy")`) covers types, exactness, memory order, records, archives, untrusted files and what does not round-trip; its `integer64` chunk runs only where bit64 is installed.
+- `test-tables.R` keeps the three copies of the dtype table in step: every dtype of design §6.1 has a NumPy fixture, is named in `npy_decode()`'s documentation, and is in the design (that part skips in the built package, which has no `.agents/`).
+- Spelling: `inst/WORDLIST` and `tests/spelling.R`. `spelling::spell_check_setup()` set `Language: en-US`; it is back to `en-GB` (alignment R2), and the wordlist was rebuilt against it.
+- `cran-comments.md` lists the CI legs as test environments, as the family does.
+- **Deviation: a week of clean nightly fuzzing** was not waited for. The nightly run is scheduled (an hour per target); the pull-request runs found and fixed two real holes (Stages 2 and 3). The criterion stands for the release: Stage 9 checks the nightly history before submitting.
+- **Deviation: `RcppCNPy`'s test files** are not committed. RcppCNPy is GPL (>= 2), and its files cannot be added to an MIT package; the case they stood for, files from a writer other than NumPy, is covered by hand-built headers (16-byte alignment, no growth spaces, double quotes, other key orders) in `test-header.R`.
+- Sanitizers, valgrind, rchk, gctorture and the forced-big-endian build run on every pull request (`native-checks.yaml`); this stage's own pull request is their run on the whole package.
 
 ---
 
