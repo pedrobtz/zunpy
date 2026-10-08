@@ -97,7 +97,12 @@ argument's name, and <code>limit_value</code>. Its subclasses are
 written.</p></dd>
 
 
-</dl></div>
+</dl><p>Warnings inherit from <code>zunpy_warning</code>: <code>zunpy_byte_order</code> when a dtype
+gives its byte order as native (<code>=</code>) or not at all, which NumPy never
+writes and which is read as little-endian; and <code>zunpy_alignment</code> when
+the data starts at a multiple of 16 bytes but not of 64, as files from
+NumPy before 1.14 and from other writers do.</p>
+    </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
