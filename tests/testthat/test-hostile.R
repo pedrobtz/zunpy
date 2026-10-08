@@ -201,3 +201,28 @@ test_that("limits are checked as arguments", {
   expect_zunpy_error(znp_header_check(x, max_header = NA), "zunpy_invalid_argument")
   expect_zunpy_error(znp_header_check(1:3), "zunpy_invalid_argument")
 })
+
+test_that("GUARD itemsize: no element larger than max_size, even with none", {
+  x <- npy_header_bytes(npy_dict("'<U1000000000'", "(0,)"))
+  e <- expect_zunpy_error(znp_header_check(x), "zunpy_size_limit")
+  expect_identical(e$limit, "max_size")
+  # Found by the fuzzer: a subarray shape that saturates the itemsize, with
+  # no records to need the bytes.
+  x <- npy_header_bytes(paste0(
+    "{'descr': [('b', '<f8', (3, 6666666666666666666))], ",
+    "'fortran_order': False, 'shape': (0,), }"
+  ))
+  expect_zunpy_error(znp_header_check(x), "zunpy_limit_error")
+})
+
+test_that("GUARD columns: subarray elements count against max_fields", {
+  d <- "{'descr': [('a', '|u1', (3,)), ('b', '|u1')], 'fortran_order': False, 'shape': (1,), }"
+  x <- npy_header_bytes(d, raw(4))
+  e <- expect_zunpy_error(znp_header_check(x, max_fields = 3), "zunpy_limit_error")
+  expect_identical(e$limit, "max_fields")
+  expect_identical(znp_header_check(x, max_fields = 4)$itemsize, 4)
+  x <- npy_header_bytes(
+    "{'descr': [('a', '|V0', (1073741824,))], 'fortran_order': False, 'shape': (1,), }"
+  )
+  expect_zunpy_error(znp_header_check(x), "zunpy_limit_error")
+})

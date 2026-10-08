@@ -49,6 +49,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     lim.max_header = (o & 2) ? 256 : 1u << 20;
     lim.max_dims = (o >> 2) & 7 ? ((o >> 2) & 7) * 8 : 1;   /* 1, 8 .. 56 */
     lim.max_fields = (o & 0x20) ? 4 : 1024;
+    lim.header_only = 0;
 
     znp_plan plan;
     void *scratch;
@@ -77,6 +78,17 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
             __builtin_trap();
         if (plan.n_fields < 0 || plan.n_fields > lim.max_fields)
             __builtin_trap();
+        if (plan.itemsize > lim.max_size)
+            __builtin_trap();
+        uint64_t columns = 0;
+        for (int i = 0; i < plan.n_fields; i++) {
+            uint64_t m = 1;
+            for (int d = 0; d < plan.fields[i].ndim; d++)
+                m *= plan.fields[i].shape[d];
+            columns += m;
+        }
+        if (columns > (uint64_t)lim.max_fields)
+            __builtin_trap();
         if (!plan.structured && plan.n_fields != 0)
             __builtin_trap();
         for (int i = 0; i < plan.n_fields; i++) {
@@ -87,7 +99,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
                 !zuf_utf8_valid(f->name, f->name_len))
                 __builtin_trap();
         }
-        znp_limits relaxed = {UINT64_MAX, 1u << 20, ZNP_MAX_DIMS_CAP, 1 << 20};
+        znp_limits relaxed = {UINT64_MAX, 1u << 20, ZNP_MAX_DIMS_CAP, 1 << 20, 0};
         znp_plan again;
         void *scratch2;
         if (run(data, size, &relaxed, &again, &scratch2) != ZNP_OK ||

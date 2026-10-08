@@ -1,0 +1,27 @@
+# Roadmap Stage 2: the fixtures against NumPy itself (design section 15).
+# tools/check-fixtures regenerates every fixture with the NumPy version
+# pinned in tools/make-fixtures.py and requires it byte-identical to the
+# committed file, then checks every MANIFEST row against np.load(). The R
+# suite compares npy_decode() with the same MANIFEST on every platform, so
+# together they compare zunpy with NumPy. Nothing under tests/ needs Python.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+name: conformance
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  numpy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: tools/check-fixtures

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`zunpy` is an R package that reads and writes NumPy's array files, `.npy` (one array) and `.npz` (a ZIP of `.npy` members), to and from ordinary R vectors, matrices, arrays and data frames, with no Python installed. It is a *format* package in the `zu*` family, like `zucbor`: one new parser, for the header (a restricted Python literal), over byte-level work that belongs to its providers. `zubin` (`LinkingTo`) owns every typed read and write, half floats and record layouts; `zufast` (`LinkingTo`, header-only) owns UTF-8 validation and the integer parser; `zukomp` (`Imports`) owns raw DEFLATE for compressed `.npz` members. `bit64` and `reticulate` are `Suggests` only. It deliberately has no C API, never evaluates Python, never reads pickles or object arrays, and implements no NumPy semantics.
+`zunpy` is an R package that reads and writes NumPy's array files, `.npy` (one array) and `.npz` (a ZIP of `.npy` members), to and from ordinary R vectors, matrices, arrays and data frames, with no Python installed. It is a *format* package in the `zu*` family, like `zucbor`: one new parser, for the header (a restricted Python literal), over byte-level work that belongs to its providers. `zubin` (`LinkingTo`) owns every typed read and write, half floats and record layouts; `zufast` (`LinkingTo`, header-only) owns UTF-8 validation and the integer parser; `zukomp` (`Imports`) owns raw DEFLATE for compressed `.npz` members. `bit64` is a `Suggests`; NumPy is used only by scripts under `tools/`, never by the R suite. It deliberately has no C API, never evaluates Python, never reads pickles or object arrays, and implements no NumPy semantics.
 
 Two documents outrank this file. [.agents/design.md](../.agents/design.md) is the specification, numbered §1–§21: every statement in it is a decision, and open questions live only in its §18. [.agents/roadmap.md](../.agents/roadmap.md) sequences it into Stages 0–9, each with a **Status:** line under its heading. Both were adopted on 2026-10-08 from [RFC 0003](https://github.com/pedrobtz/packages/blob/main/rfcs/0003-zunpy-numpy-arrays.md) in `pedrobtz/packages`, with the RFC's assumptions about the siblings checked and corrected. `CLAUDE.md` orients, the design decides, the roadmap sequences.
 
@@ -13,7 +13,7 @@ Sibling checkouts are in `../`. `zucbor` is the model for the check-then-build s
 
 ## Current state
 
-**2026-10-08: Stages 0 and 1 done.** The check phase exists: `src/znp_header.c` parses and validates a whole `.npy` header (design §9) R-free, and `znp_header_check()` (internal, `R/header.R`) returns its plan or raises the classed condition. Gates: `tools/run-lint`, `tools/check-symbols`, `tools/run-mutation-check` (17 guards) and `tools/run-fuzz` with its canary, all in `hardening.yaml`. No R value is built from a plan yet, and no function of design §5 but `zunpy_info()` is exported. zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
+**2026-10-08: Stages 0–2 done.** `npy_decode()` reads every numeric, boolean and complex dtype of design §6.1 from a raw vector, in both byte orders and both memory orders, and `npy_header()` reads a header; strings, dates, structured dtypes, `.npz`, files and writing are not built yet. The check phase (`src/znp_header.c`) and the build phase (`src/znp_build.c`) are separate, as design §4 says. Gates: `hardening.yaml` (lint, symbols, mutation check over 19 guards, fuzzing with its canary), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk) and `conformance.yaml` (fixtures regenerated with NumPy and checked against `np.load()`). zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
 
 Update this paragraph at the end of every stage.
 
@@ -61,17 +61,16 @@ tools/run-lint                 # Stage 1: -Wall -Wextra -Wpedantic -Wshadow -Wer
 tools/check-symbols <so>       # Stage 0: only R_init_zunpy exported; no stdio/abort/exit
 tools/run-mutation-check       # Stage 1: every /* GUARD: */ seen to be load-bearing (cases: tools/mutation-cases.R)
 Rscript tools/fuzz-seeds.R     # Stage 1: regenerate fuzz/seeds (commit the result)
-python3 tools/make-fixtures.py # Stage 2: regenerate NumPy fixtures (NumPy version pinned in the script)
-tools/check-fixtures           # Stage 2: regenerate and diff against the committed fixtures (CI)
+tools/check-fixtures           # Stage 2: regenerate the NumPy fixtures, diff, check against np.load() (needs uv)
 tools/run-benchmarks           # Stage 7: against readBin(), RcppCNPy, reticulate; not a CI gate
 ```
 
 ## Architecture
 
-Planned layout, from design §4, §10 and §13. Today `src/` holds `init.c`, `znp_r.h`, `znp_info.c`, `znp_check.h`, `znp_header.c` and `znp_r_header.c`.
+Planned layout, from design §4, §10 and §13. Today `src/` holds everything below except `znp_write.c` and `znp_zip.c`.
 
 ```text
-R/            decode.R, encode.R, read.R, npz.R, structured.R, dtype.R,
+R/            decode.R, header.R, encode.R, read.R, npz.R, structured.R, dtype.R,
               conditions.R, args.R, info.R, zu_source.R (copied verbatim from zuxml),
               zunpy-package.R
 src/          init.c          registration only
@@ -80,12 +79,12 @@ src/          init.c          registration only
               znp_check.h     the check phase's R-free interface and the plan struct
               znp_header.c    prefix, dict grammar, descr grammar, size check, limits
               znp_r_header.c  .Call glue: the plan as an R list, statuses by name
-              znp_build.c     plan -> R value through zubin's rw.h; C-order permutation
+              znp_build.c     plan -> R value through zubin's unpack kernels; C-order permutation
               znp_write.c     header formatting; data into a zubin builder
               znp_zip.c       .npz records, CRC-32
               Makevars        hand-listed OBJECTS, $(C_VISIBILITY)
 fuzz/         fuzz_header.c (-DZNP_FUZZ_CANARY builds the canary), probe.c, npy.dict, seeds/ (not in the tarball)
-tools/        make-fixtures.py and the gate scripts above
+tools/        make-fixtures.py, conformance.py and the gate scripts above
 tests/testthat/fixtures/npy/   NumPy-written files and MANIFEST.tsv
 .agents/      design.md, roadmap.md
 ```
@@ -125,7 +124,7 @@ Reading is two phases, as in zucbor. Bytes (from `npy_decode()`, or `npy_read()`
 - **Self-contained.** Global state through `withr::local_*()`, randomised input through `withr::local_seed()`. Files only under `withr::local_tempdir()`.
 - **Assert on condition classes and fields (`offset`, `index`, `dtype`, `member`, `limit`), never message text.** Use `expect_zunpy_error()`.
 - **Order independence.** `devtools::test(shuffle = TRUE)` is part of the definition of done; serial, no `Config/testthat/parallel`.
-- **The oracle is NumPy, never hand-written expectations.** Fixtures are written by `tools/make-fixtures.py` with NumPy pinned, recorded in `MANIFEST.tsv` with a SHA-256, and never regenerated by a test. `np.load()` through `reticulate` runs only in the `conformance` CI job; nothing under `tests/` requires Python. It does not cover hostile input, which is hand-built in `test-hostile.R`.
+- **The oracle is NumPy, never hand-written expectations.** Fixtures are written by `tools/make-fixtures.py` with NumPy pinned (run it with `uv run --no-project --with numpy==2.3.3 python tools/make-fixtures.py`), recorded in `MANIFEST.tsv` with a SHA-256 and every value (floats as `float.hex()`, which R reads exactly), and never regenerated by a test. `tools/check-fixtures` (the `conformance` job) regenerates them and checks each MANIFEST row against `np.load()`; the R suite checks `npy_decode()` against the same rows. Nothing under `tests/` requires Python. Hostile input is hand-built in `test-hostile.R`.
 - **Helpers in `tests/testthat/helper-*.R`**: `helper-bytes.R` (`bytes()`, `npy_header_bytes()`), `helper-fixtures.R` (`fixture_path()`, `fixtures_manifest()`), `helper-expect.R` (`expect_zunpy_error()`, `expect_round_trip()`), `helper-skip.R` (`skip_heavy()` on `ZUNPY_SKIP_HEAVY`, `skip_if_no_numpy()`).
 - **Keep the suite inside the CRAN time budget:** under 15 s; the 2 GiB and 10^6-member cases call `skip_heavy()` and run nightly.
 
@@ -148,7 +147,7 @@ Reading is two phases, as in zucbor. Bytes (from `npy_decode()`, or `npy_read()`
 - Prose is simple, short and en-GB (`Language: en-GB`, `inst/WORDLIST`).
 - Wrap roxygen at 80 characters; `air format .` on R sources.
 - `lower_snake_case`; the naming table above.
-- No hard runtime dependency beyond `zukomp` (design D1); add none without a recorded decision. `bit64` and `reticulate` stay in `Suggests`.
+- No hard runtime dependency beyond `zukomp` (design D1); add none without a recorded decision. `bit64` stays in `Suggests`.
 - Every export has `@return` and runnable `@examples`; no roxygen topics for internals.
 - `R/zu_source.R` is copied verbatim from `../zuxml`; fix it there and re-copy.
 - `NEWS.md` keeps a versioned heading.

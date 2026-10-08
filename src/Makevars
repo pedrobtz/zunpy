@@ -9,6 +9,7 @@ PKG_CFLAGS = $(C_VISIBILITY)
 
 OBJECTS = \
 	init.o \
+	znp_build.o \
 	znp_header.o \
 	znp_info.o \
 	znp_r_header.o

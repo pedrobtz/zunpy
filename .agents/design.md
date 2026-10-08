@@ -160,7 +160,7 @@ Stage 0 verifies it again.
 - **`bit64`**: `i8` and `u8` beyond 2^53 follow `zubin`'s `int64 =`
   argument and return `integer64` on request, with `bit64` in `Suggests`,
   never `Imports`.
-- **`reticulate`** is the oracle in tests (§15), never a dependency.
+- **`reticulate`** is not used: NumPy is the oracle through Python scripts in CI (§15).
 
 **Consumers.** None named. The users are people exchanging arrays between
 R and Python pipelines, CI jobs that must not install Python, and anyone
@@ -361,8 +361,9 @@ A dimension of 0 anywhere gives an empty vector with the `dim` kept. An
 R array's `dim` is `integer`, so any dimension above `2^31 - 1` is
 `zunpy_unrepresentable` even when the product would fit a long vector
 (`zucbor`'s `ZU_ERR_DIMENSION` rule). The product may exceed `2^31 - 1`:
-the result is a long vector without `dim` only if k = 1; otherwise R cannot
-hold it and the error is the same.
+R holds a long vector, with or without `dim`, so only a product above
+R's `R_XLEN_T_MAX` is refused (*settled at Stage 2*: the RFC said R could
+not hold a long array, which is not so).
 
 ### 6.3 Structured dtypes
 
@@ -753,7 +754,7 @@ default, since a crafted header could stall `ast.literal_eval`.
 | `max_size` | 2 GiB | before the prefix, from declared sizes |
 | `max_header` | 10,000 bytes | the length field, before the dict is read |
 | `max_dims` | 32 | the shape tuple; NumPy's own ceiling |
-| `max_fields` | 1,024 | structured dtypes |
+| `max_fields` | 1,024 | structured dtypes: the R columns, a subarray counting one per element |
 | `max_members` | 10,000 | the `.npz` central directory |
 
 When reading a connection, `max_size` is enforced while reading, at
@@ -765,6 +766,13 @@ with the bytes actually present before any allocation; a header claiming
 exceeds the bytes present is `zunpy_parse_error` (truncation); bytes
 beyond the declared size are `zunpy_parse_error` too, since NumPy's own
 reader rejects trailing data.
+
+**No element is larger than `max_size`** (*settled at Stage 2*, found by
+the fuzzer in CI): with a zero dimension nothing else bounds the itemsize,
+and a subarray shape such as `(3, 6666666666666666666)` saturates it, yet
+the build phase sizes buffers by it. **The columns a record makes are
+bounded by `max_fields`**, a subarray counting one per element, so that a
+subarray of zero-width elements cannot ask for a billion columns.
 
 **Zero-width types are bounded too** (*settled at Stage 1*). `S0`, `V0`
 and an empty record declare elements with no bytes behind them, so the
@@ -813,8 +821,8 @@ that is a valid Python expression but not in §9.2 is a parse error.
   through `zubin` and `zufast`'s `memcpy` helpers, so alignment and byte
   order never matter.
 - `DESCRIPTION`: `LinkingTo: zubin (>= 0.1.0), zufast (>= 0.1.0)`,
-  `Imports: zukomp (>= 0.1.0)`, `Suggests: bit64, reticulate, testthat,
-  withr, knitr, rmarkdown`. None of the three is on CRAN and zubin is at
+  `Imports: zukomp (>= 0.1.0)`, `Suggests: bit64, testthat, withr, knitr,
+  rmarkdown`. None of the three is on CRAN and zubin is at
   `0.0.0.9000` (*verified 2026-10-08*), so development carries `Remotes:
   pedrobtz/zubin@main, pedrobtz/zufast@main, pedrobtz/zukomp@main`. No
   `Remotes:` in a submitted tarball (R10.2); the package is rebuilt
@@ -839,13 +847,19 @@ that is a valid Python expression but not in §9.2 is a parse error.
   orders where applicable, plus the `.npz` cases, with NumPy pinned in the
   script's header. The files are committed under
   `tests/testthat/fixtures/npy/` with a `MANIFEST.tsv` row each: dtype,
-  shape, order, NumPy version, SHA-256. `tools/check-fixtures` regenerates
-  and diffs them in CI's `conformance` job, in a container with NumPy.
-- **The oracle is NumPy through `reticulate`,** skipped when absent, and
-  only in the `conformance` job: for every fixture, `np.load()`'s value
-  compared with `npy_read()`'s, and for every R value in §7.1, zunpy's
-  bytes loaded by `np.load()` and compared field by field. `R CMD check`
-  on CRAN runs without NumPy and tests against the committed fixtures.
+  shape, order, NumPy version, SHA-256, and every value in C order
+  (floats as `float.hex()`, which R's `as.numeric()` reads exactly; its
+  decimal reading of `1.7976931348623157e+308` is `Inf`).
+  `tools/check-fixtures` regenerates and diffs them in CI's
+  `conformance` job, with NumPy through `uv`.
+- **The oracle is NumPy, by way of the MANIFEST** (*settled at Stage 2*,
+  replacing `reticulate`). In the `conformance` job,
+  `tools/conformance.py` checks that every MANIFEST row is what
+  `np.load()` reads from its file; on every platform, the R suite checks
+  that `npy_decode()` reads the same values from the same file. Together
+  they compare zunpy with NumPy without R and Python in one process, and
+  `R CMD check` needs no Python. From Stage 3, R writes files for
+  `np.load()` to read in the same job. `reticulate` is not used.
 - **Round trip as a property** (§7.4): 300 generated arrays over every
   dtype, shape of 0 to 4 dimensions including zero-length dimensions, both
   orders, with `NA`, `NaN`, `-0`, infinities, the empty string and a
@@ -864,9 +878,9 @@ that is a valid Python expression but not in §9.2 is a parse error.
 - **The mutation check** (`tools/run-mutation-check`, from `zucbor`): each
   `/* GUARD: name */` in the check phase is disabled in turn and the
   matching hostile input must then pass, proving the guard is load-bearing.
-- **Big-endian** reads are tested by fixtures written with `>`; the ASan
-  job builds once with `-DZNP_FORCE_BE_HOST` to run the byte-by-byte path
-  on a little-endian machine.
+- **Big-endian** reads are tested by fixtures written with `>`. Until the
+  `memcpy` fast path of Stage 7 exists, no code depends on the host's
+  byte order, so `-DZNP_FORCE_BE_HOST` arrives with that path.
 - Tests are self-sufficient, pass under `shuffle = TRUE`, stay serial, and
   the CRAN suite runs in under 15 s; the 2 GiB and 10^6-member cases call
   `skip_heavy()` and run only in the nightly job.

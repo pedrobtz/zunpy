@@ -34,6 +34,12 @@ seeds <- list(
     raw(2), version = 3L
   )
 )
+# Every NumPy fixture too (tools/make-fixtures.py), as roadmap Stage 2 asks.
+fixtures <- list.files("tests/testthat/fixtures/npy", "\\.npy$", full.names = TRUE)
+for (f in fixtures) {
+  seeds[[paste0("fx-", sub("\\.npy$", "", basename(f)))]] <-
+    readBin(f, "raw", file.size(f))
+}
 for (name in names(seeds)) {
   writeBin(c(as.raw(0), seeds[[name]]), file.path(out, paste0(name, ".bin")))
 }

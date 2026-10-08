@@ -495,6 +495,7 @@ typedef struct {
     znp_field        *fields;
     size_t            cap_fields;
     znp_span         *spans;
+    uint64_t          columns;  /* R columns so far: fields, subarrays expanded */
 } znp_ctx;
 
 static const char *node_str(const znp_parser *p, uint32_t id)
@@ -698,14 +699,20 @@ static int generated_name(znp_ctx *c, znp_field *f, int index, size_t pos)
     return 1;
 }
 
+/* A field's size, and the columns it makes in R: one, or one per element
+   of a subarray. The columns of all fields together are bounded by
+   max_fields, so that no header can ask the build phase for more columns
+   than that, whatever the element width (a subarray of zero-width elements
+   has no bytes to compare with the input). */
 static int finish_field(znp_ctx *c, znp_field *f, size_t pos)
 {
     uint64_t n = 1;
     for (int d = 0; d < f->ndim; d++)
         n = sat_mul(n, f->shape[d]);
     f->size = sat_mul(f->dtype.itemsize, n);
-    (void)c;
-    (void)pos;
+    c->columns = sat_add(c->columns, n);
+    if (c->columns > (uint64_t)c->lim->max_fields) /* GUARD: columns */
+        return perr(c->p, ZNP_ERR_FIELDS_LIMIT, pos);
     return 1;
 }
 
@@ -781,7 +788,8 @@ static int parse_record_list(znp_ctx *c, uint32_t id)
             f->title_len = p->nodes[title].len;
         }
         f->offset = offset;
-        finish_field(c, f, t->pos);
+        if (!finish_field(c, f, t->pos))
+            return 0;
         offset = sat_add(offset, f->size);
     }
     c->plan->itemsize = offset;
@@ -869,7 +877,8 @@ static int parse_record_dict(znp_ctx *c, uint32_t id)
                 return perr(p, ZNP_ERR_TYPE, t->pos);
             tt = t->next;
         }
-        finish_field(c, f, p->nodes[nm].pos);
+        if (!finish_field(c, f, p->nodes[nm].pos))
+            return 0;
         next_offset = sat_add(f->offset, f->size);
         nm = p->nodes[nm].next;
         fm = p->nodes[fm].next;
@@ -1009,6 +1018,7 @@ znp_status znp_check(const uint8_t *data, size_t size,
     c.fields = (znp_field *)(void *)(base + L.off_fields);
     c.cap_fields = L.n_fields;
     c.spans = (znp_span *)(void *)(base + L.off_sort);
+    c.columns = 0;
     plan->fields = c.fields;
 
     if (p.st == ZNP_OK)
@@ -1024,6 +1034,11 @@ znp_status znp_check(const uint8_t *data, size_t size,
     plan->data_bytes = sat_mul(plan->count, plan->itemsize);
     uint64_t avail = (uint64_t)size - plan->data_offset;
 
+    /* No element is larger than the whole input may be: with no elements
+       (a zero dimension) nothing else would bound it, and the build phase
+       sizes buffers by it (a U<n> value is decoded in 4n bytes). */
+    if (plan->itemsize > lim->max_size) /* GUARD: itemsize */
+        return fail(fault, ZNP_ERR_SIZE_LIMIT, plan->header_offset);
     /* A zero-width type (S0, V0, an empty record) declares elements with no
        bytes behind them; the build phase would still allocate one R value
        each, so their number is bounded by max_size too. */
@@ -1031,6 +1046,8 @@ znp_status znp_check(const uint8_t *data, size_t size,
         return fail(fault, ZNP_ERR_SIZE_LIMIT, plan->header_offset);
     if (plan->data_bytes > lim->max_size) /* GUARD: declared-size */
         return fail(fault, ZNP_ERR_SIZE_LIMIT, plan->header_offset);
+    if (lim->header_only)
+        return ZNP_OK;
     if (plan->data_bytes > avail) /* GUARD: data-truncated */
         return fail(fault, ZNP_ERR_TRUNCATED, size);
     if (plan->data_bytes < avail) /* GUARD: trailing */

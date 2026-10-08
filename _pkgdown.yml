@@ -9,6 +9,10 @@ development:
   mode: auto
 
 reference:
+  - title: Reading
+    contents:
+      - npy_decode
+      - npy_header
   - title: About
     contents:
       - zunpy_info

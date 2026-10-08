@@ -41,6 +41,11 @@ cases <- list(
   list("duplicate-key", npy_header_bytes(
     "{'descr': '<f8', 'descr': '<f8', 'fortran_order': False, 'shape': (), }",
     raw(8)), dflt, "ZNP_ERR_KEY"),
+  list("itemsize", npy_header_bytes(npy_dict("'<U1000000'", "(0,)")),
+       dflt, "ZNP_ERR_SIZE_LIMIT"),
+  list("columns", npy_header_bytes(
+    "{'descr': [('a', '|u1', (3,))], 'fortran_order': False, 'shape': (1,), }",
+    raw(3)), "4096 10000 32 2", "ZNP_ERR_FIELDS_LIMIT"),
   list("zero-width", npy_header_bytes(npy_dict("'|S0'", sprintf("(%s,)", big))),
        dflt, "ZNP_ERR_SIZE_LIMIT"),
   list("declared-size", npy_header_bytes(
