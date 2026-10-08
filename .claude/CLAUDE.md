@@ -13,7 +13,7 @@ Sibling checkouts are in `../`. `zucbor` is the model for the check-then-build s
 
 ## Current state
 
-**2026-10-08: Stages 0–2 done.** `npy_decode()` reads every numeric, boolean and complex dtype of design §6.1 from a raw vector, in both byte orders and both memory orders, and `npy_header()` reads a header; strings, dates, structured dtypes, `.npz`, files and writing are not built yet. The check phase (`src/znp_header.c`) and the build phase (`src/znp_build.c`) are separate, as design §4 says. Gates: `hardening.yaml` (lint, symbols, mutation check over 19 guards, fuzzing with its canary), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk) and `conformance.yaml` (fixtures regenerated with NumPy and checked against `np.load()`). zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
+**2026-10-08: Stages 0–3 done.** `npy_decode()` reads and `npy_encode()` writes every numeric, boolean and complex dtype of design §6.1 and §7.1 as raw vectors, in both memory orders, and `npy_header()` reads a header; the bytes written match `numpy.save()`'s. Strings, dates, structured dtypes, `.npz` and files are not built yet. The check phase (`src/znp_header.c`), the build phase (`src/znp_build.c`) and the writer (`src/znp_write.c`) are separate. Gates: `hardening.yaml` (lint, symbols, mutation check over 19 guards, fuzzing with its canary), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk) and `conformance.yaml` (fixtures regenerated with NumPy and checked against `np.load()`, and R-written files read by `np.load()`). zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
 
 Update this paragraph at the end of every stage.
 
@@ -67,7 +67,7 @@ tools/run-benchmarks           # Stage 7: against readBin(), RcppCNPy, reticulat
 
 ## Architecture
 
-Planned layout, from design §4, §10 and §13. Today `src/` holds everything below except `znp_write.c` and `znp_zip.c`.
+Planned layout, from design §4, §10 and §13. Today `src/` holds everything below except `znp_zip.c`.
 
 ```text
 R/            decode.R, header.R, encode.R, read.R, npz.R, structured.R, dtype.R,
@@ -80,11 +80,12 @@ src/          init.c          registration only
               znp_header.c    prefix, dict grammar, descr grammar, size check, limits
               znp_r_header.c  .Call glue: the plan as an R list, statuses by name
               znp_build.c     plan -> R value through zubin's unpack kernels; C-order permutation
-              znp_write.c     header formatting; data into a zubin builder
+              znp_write.c     header formatted as NumPy does; data packed into one raw vector
+              znp_perm.c      C order <-> R order, one pass, both directions
               znp_zip.c       .npz records, CRC-32
               Makevars        hand-listed OBJECTS, $(C_VISIBILITY)
 fuzz/         fuzz_header.c (-DZNP_FUZZ_CANARY builds the canary), probe.c, npy.dict, seeds/ (not in the tarball)
-tools/        make-fixtures.py, conformance.py and the gate scripts above
+tools/        make-fixtures.py, conformance.py, conformance-write.R and the gate scripts above
 tests/testthat/fixtures/npy/   NumPy-written files and MANIFEST.tsv
 .agents/      design.md, roadmap.md
 ```
@@ -103,7 +104,7 @@ Reading is two phases, as in zucbor. Bytes (from `npy_decode()`, or `npy_read()`
 - **No byte-level code of zunpy's own** beyond what zubin has no type for: complex as float pairs, UCS-4 strings, `datetime64` classes and ZIP's CRC-32. Byte swapping and narrowing are zubin's.
 - **Writing is deterministic and matches NumPy byte for byte** (design §8): key order, quotes, trailing comma, `(n,)`, 64-byte padding, little-endian, fixed `.npz` timestamps. Fixtures prove it; do not "tidy" the header format.
 - **Exact or refused.** A value that does not fit its target is an error with its index, never rounded or wrapped. `NA` in `logical` or `integer` is refused unless `na = "allow"`.
-- **Heap memory that crosses a longjmp is the zubin builder's**, owned by an external pointer with a finalizer. Everything else is `PROTECT`ed or `R_alloc()`ed.
+- **Nothing heap-allocated crosses a longjmp.** Results are R vectors allocated at their final size and `PROTECT`ed; scratch is `R_alloc()`ed. A zubin builder (an external pointer with a finalizer) is for `.npz`, whose size is not known up front.
 - **C never calls `Rf_error()`.** Statuses come back by enumerator name and `R/conditions.R` raises; `zubin_error` from `bin_unpack()` and `bin_pack()` is re-raised as the matching `zunpy_` class.
 - **Raw DEFLATE is `"deflate-raw"` in zukomp**, not `"deflate"` (which is zlib-wrapped). Always pass `max_output` set to the member's declared size.
 - **Portable make only** in `src/Makevars`; hand-listed `OBJECTS`; no `Makevars.win`. `R_init_zunpy` needs `attribute_visible` under `$(C_VISIBILITY)`.

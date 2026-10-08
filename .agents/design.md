@@ -208,12 +208,15 @@ The check phase is R-free behind `znp_check.h`, so it builds with
 `-DZNP_STANDALONE` and a libFuzzer target as `zucbor`'s walk does. It uses
 `zufast`'s integer parser for the shape, nothing else from outside C99.
 
-The writer is one pass into a `zubin` builder (`zb_buf` through
-`zubin-r.h`): the header is formatted into a fixed-size stack buffer, the
-builder receives header then data, and `bin_take()` yields the raw vector
-or `writeBin()` writes it. Heap memory that must survive a longjmp is the
-builder's, owned by an external pointer with a finalizer (zubin §12), so
-an interrupt or an error mid-write leaks nothing.
+The writer is one pass into a raw vector (*settled at Stage 3*, in place
+of a `zubin` builder): the header is formatted into a fixed-size stack
+buffer, and since its length and the data's are known before anything is
+written, the result is allocated once at its final size and filled
+through zubin's pack kernels (`zb_pack_i32`, `zb_pack_f64`, `zb_pack_i64`
+in `zubin/layout.h`). R owns every byte from the start, so an interrupt
+or a refused value mid-write leaks nothing and nothing is copied. A
+builder earns its place for `.npz` (Stage 6), whose size is not known up
+front.
 
 ## 5. Public R API (complete v0.1.0 surface)
 
@@ -444,7 +447,8 @@ Notes, by row:
   `na = "allow"`.
 - `double`: `NA_real_` is written bit-exact (R's NaN payload 1954), so it
   round-trips to R; NumPy sees a NaN.
-- `raw`: a `raw` vector is bytes, never a string.
+- `raw`: a `raw` vector is bytes, never a string. It reads back as
+  `integer`, since `|u1` is an integer dtype (a documented loss).
 - `character`: n is the longest string, in code points for `U` and in
   bytes for `S`. `NA_character_` is an empty string with `na = "allow"`,
   else an error.
@@ -488,6 +492,7 @@ and UTF-8 (version 3.0 header if any is non-Latin-1, §9.2).
 | `factor` | labels as `U<n>` |
 | `NA` in `logical` or `integer` | refused, or `False` / `INT_MIN` on request |
 | `NA_real_` | bit-exact NaN: `NA` in R, NaN in NumPy |
+| `raw` | written `\|u1`, read back as `integer` |
 | `POSIXct` `tzone` | written as UTC instants, read back as UTC |
 | `U<n>` padding | trailing NULs stripped on read |
 | `S<n>` with `encoding` | transcoded to UTF-8 on read |
@@ -527,7 +532,17 @@ Identical R objects give identical bytes on every platform:
   through `zb_wr_*le`. A big-endian host writes the same bytes.
 - **`fortran_order`** is `True` for an R array with `dim` of length 2 or
   more and `order = "F"`, since that is R's memory layout and needs no
-  copy; `False` for vectors and 0-d arrays, as NumPy writes them.
+  copy; `False` for vectors and 0-d arrays, as NumPy writes them. An
+  array that is both C- and Fortran-contiguous (empty, or with at most
+  one dimension above 1) is written with `False`, which is NumPy's own
+  rule and gives the same bytes either way (*settled at Stage 3*).
+- **The spare spaces.** NumPy pads the dict with
+  `21 - len(repr(shape[growth axis]))` spaces after it (the first axis, or
+  the last in Fortran order), so that an appending writer can rewrite the
+  shape in place, and then pads the whole prefix to 64 bytes with 1 to 64
+  further spaces (64 when it is already aligned). zunpy does both, which
+  is why its output matches NumPy's byte for byte (*verified 2026-10-08*:
+  every little-endian fixture but the 0-d one re-encodes identically).
   `order = "C"` permutes on write for a reader that must have C order
   (some C and Rust loaders refuse Fortran order; NumPy itself does not
   care).
@@ -808,8 +823,9 @@ that is a valid Python expression but not in §9.2 is a parse error.
   about 550 KB at the default limits, and linear in `max_header`.
 - The build phase allocates the result once, from the plan, and converts
   in place. A C-order permutation needs one temporary of the same size.
-- The writer's buffer is a `zubin` builder owned by a finalized external
-  pointer, the only heap memory that crosses a longjmp.
+- The writer's output is one raw vector, allocated at its final size
+  before anything is written (§4); a C-order write packs into an
+  `R_alloc()`ed temporary and permutes into it.
 - Strings go through `mkCharLenCE()` once per element; a `U<n>` column
   of one million elements is one million `CHARSXP`s, which is R's cost,
   not zunpy's, and the documentation says so.
@@ -911,7 +927,7 @@ Against `RcppCNPy` and `reticulate` on 10^7 doubles (80 MB) and 10^7
 | D6 | CRC-32 | zunpy's own 60 lines; not a `zufast` request |
 | D7 | `datetime64` | `POSIXct` in UTC, `Date` at `D`, else `integer64` |
 | D8 | Header padding on read | any length; below 64 warns, below 16 errors |
-| D9 | `fortran_order` on write | `True` for arrays, `False` for vectors |
+| D9 | `fortran_order` on write | `True` for arrays, `False` for vectors and for arrays NumPy would call both orders |
 | D10 | Info function | `zunpy_info()`, the package name (R1) |
 | D11 | Structured arrays, k > 1 dims | a data frame carrying `npy_shape` |
 | D12 | Header evaluation | a grammar with a depth cap, never an evaluator |

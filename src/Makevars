@@ -12,4 +12,6 @@ OBJECTS = \
 	znp_build.o \
 	znp_header.o \
 	znp_info.o \
-	znp_r_header.o
+	znp_perm.o \
+	znp_r_header.o \
+	znp_write.o

@@ -13,6 +13,10 @@ reference:
     contents:
       - npy_decode
       - npy_header
+  - title: Writing
+    contents:
+      - npy_encode
+      - npy_dtype
   - title: About
     contents:
       - zunpy_info
