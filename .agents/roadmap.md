@@ -187,7 +187,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 ## Stage 3 — Writing plain arrays · M
 
-**Status:** not started.
+**Status:** done 2026-10-08 ([#6](https://github.com/pedrobtz/zunpy/issues/6)).
 
 **Goal:** R vectors, matrices and arrays become `.npy` bytes that are deterministic and identical to NumPy's.
 
@@ -205,6 +205,18 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 - The round-trip property holds over the generated corpus.
 
 **Not this stage:** strings, dates, data frames, `.npz`, writing to files.
+
+**What actually happened**
+
+- The output is one raw vector allocated at its final size, filled through zubin's pack kernels, rather than a zubin builder: the size is known before anything is written, so nothing is copied and R owns every byte (design §4).
+- NumPy pads the dict with `21 - len(repr(shape[growth axis]))` spare spaces before aligning to 64 bytes, and aligns an already-aligned prefix with 64 more spaces. With both, every little-endian fixture but the 0-d one re-encodes byte-identical to NumPy's file (`test-encode.R`).
+- An array that is both C- and Fortran-contiguous is written with `fortran_order` `False`, NumPy's own rule (D9 refined).
+- `npy_encode()` takes `dtype`, `order` and `na`; `npy_dtype()` gives the default. `dtype` is limited to what each R type can reach (design §7.1) and to little-endian; logical `NA` with `na = "allow"` becomes `False` with a `zunpy_na_replaced` warning.
+- The C-order permutation is shared with reading (`src/znp_perm.c`, both directions).
+- The round-trip property runs over 64 generated arrays: four R types, eight shapes of 0 to 4 dimensions (with zero-length ones), both orders, with `NA`, `NaN`, `-0`, infinities and the extremes.
+- `conformance.yaml` gained `r-writes`: `tools/conformance-write.R` writes 20 files from R and `tools/conformance.py` checks each against `np.load()`, comparing values rather than strings (R's `%a` and Python's `float.hex()` spell floats differently).
+- `raw` writes `|u1` and reads back as integer; added to design §7.4.
+- The CI fuzzer found a second hole in the Stage 2 `itemsize` guard: with no size limit (`max_size` of `UINT64_MAX`, which the harness tries and R never passes), a saturated itemsize equals the limit and passes. Elements are now also capped at 2^53 bytes whatever the limit; the input is a permanent seed.
 
 ---
 

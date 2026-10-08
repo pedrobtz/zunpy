@@ -146,41 +146,6 @@ static zb_status convert(const uint8_t *data, size_t first, size_t n,
     }
 }
 
-/* A C-order array to R's column-major order, in one pass: dst element t,
-   with index (i0, ..., ik-1) and i0 fastest, comes from src element
-   sum(i_j * cstride_j), where the last index is fastest. */
-static void permute(SEXP src, SEXP dst, const uint64_t *shape, int k)
-{
-    size_t n = (size_t)XLENGTH(src), width;
-    size_t cstride[ZNP_MAX_DIMS_CAP], idx[ZNP_MAX_DIMS_CAP];
-    const char *s;
-    char *d;
-    switch (TYPEOF(src)) {
-    case LGLSXP:  s = (const char *)LOGICAL(src); d = (char *)LOGICAL(dst); width = sizeof(int); break;
-    case INTSXP:  s = (const char *)INTEGER(src); d = (char *)INTEGER(dst); width = sizeof(int); break;
-    case CPLXSXP: s = (const char *)COMPLEX(src); d = (char *)COMPLEX(dst); width = sizeof(Rcomplex); break;
-    default:      s = (const char *)REAL(src);    d = (char *)REAL(dst);    width = sizeof(double); break;
-    }
-    cstride[k - 1] = 1;
-    for (int j = k - 2; j >= 0; j--)
-        cstride[j] = cstride[j + 1] * (size_t)shape[j + 1];
-    memset(idx, 0, sizeof idx);
-    size_t from = 0;
-    for (size_t t = 0; t < n; t++) {
-        if (t % ZNP_CHUNK == ZNP_CHUNK - 1)
-            R_CheckUserInterrupt();
-        memcpy(d + t * width, s + from * width, width);
-        for (int j = 0; j < k; j++) {
-            if (++idx[j] < shape[j]) {
-                from += cstride[j];
-                break;
-            }
-            idx[j] = 0;
-            from -= cstride[j] * ((size_t)shape[j] - 1);
-        }
-    }
-}
-
 static SEXP dim_attr(const uint64_t *shape, int k, int reverse)
 {
     SEXP dim = PROTECT(Rf_allocVector(INTSXP, k));
@@ -239,7 +204,9 @@ static SEXP build(const uint8_t *data, const znp_plan *plan, const znp_opts *o,
         int c_order = !plan->fortran_order;
         if (c_order && !o->order_file) {
             SEXP perm = PROTECT(Rf_allocVector(rtype, (R_xlen_t)n));
-            permute(out, perm, plan->shape, k);
+            size_t width = rtype == CPLXSXP ? sizeof(Rcomplex)
+                         : rtype == REALSXP ? sizeof(double) : sizeof(int);
+            znp_permute(znp_dataptr(out), znp_dataptr(perm), width, n, plan->shape, k, 1);
             Rf_setAttrib(perm, R_DimSymbol, dim_attr(plan->shape, k, 0));
             UNPROTECT(2);
             return perm;

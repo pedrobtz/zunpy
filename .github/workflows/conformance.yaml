@@ -1,4 +1,4 @@
-# Roadmap Stage 2: the fixtures against NumPy itself (design section 15).
+# Roadmap Stages 2 and 3: zunpy against NumPy itself (design section 15).
 # tools/check-fixtures regenerates every fixture with the NumPy version
 # pinned in tools/make-fixtures.py and requires it byte-identical to the
 # committed file, then checks every MANIFEST row against np.load(). The R
@@ -25,3 +25,27 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: tools/check-fixtures
+
+  # Roadmap Stage 3: R writes one file per value of design section 7.1 and
+  # np.load() must read every value back (tools/conformance-write.R, then
+  # tools/conformance.py on what it wrote).
+  r-writes:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: R writes, NumPy reads
+        run: |
+          mkdir -p "$RUNNER_TEMP/lib"
+          R CMD INSTALL --library="$RUNNER_TEMP/lib" .
+          R_LIBS="$RUNNER_TEMP/lib" Rscript tools/conformance-write.R "$RUNNER_TEMP/rw"
+          NUMPY=$(sed -n 's/^NUMPY = "\(.*\)"$/\1/p' tools/make-fixtures.py)
+          uv run --no-project --with "numpy==$NUMPY" python tools/conformance.py "$RUNNER_TEMP/rw"

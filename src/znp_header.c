@@ -1036,8 +1036,10 @@ znp_status znp_check(const uint8_t *data, size_t size,
 
     /* No element is larger than the whole input may be: with no elements
        (a zero dimension) nothing else would bound it, and the build phase
-       sizes buffers by it (a U<n> value is decoded in 4n bytes). */
-    if (plan->itemsize > lim->max_size) /* GUARD: itemsize */
+       sizes buffers by it (a U<n> value is decoded in 4n bytes). Nor, for
+       any max_size, larger than 2^53 bytes: a size that saturated would
+       otherwise pass a limit of UINT64_MAX (found by the fuzzer). */
+    if (plan->itemsize > lim->max_size || plan->itemsize > ZNP_MAX_ITEMSIZE) /* GUARD: itemsize */
         return fail(fault, ZNP_ERR_SIZE_LIMIT, plan->header_offset);
     /* A zero-width type (S0, V0, an empty record) declares elements with no
        bytes behind them; the build phase would still allocate one R value
