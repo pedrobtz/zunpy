@@ -13,7 +13,7 @@ Sibling checkouts are in `../`. `zucbor` is the model for the check-then-build s
 
 ## Current state
 
-**2026-10-08: Stages 0–2 done.** `npy_decode()` reads every numeric, boolean and complex dtype of design §6.1 from a raw vector, in both byte orders and both memory orders, and `npy_header()` reads a header; strings, dates, structured dtypes, `.npz`, files and writing are not built yet. The check phase (`src/znp_header.c`) and the build phase (`src/znp_build.c`) are separate, as design §4 says. Gates: `hardening.yaml` (lint, symbols, mutation check over 17 guards, fuzzing with its canary), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk) and `conformance.yaml` (fixtures regenerated with NumPy and checked against `np.load()`). zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
+**2026-10-08: Stages 0–2 done.** `npy_decode()` reads every numeric, boolean and complex dtype of design §6.1 from a raw vector, in both byte orders and both memory orders, and `npy_header()` reads a header; strings, dates, structured dtypes, `.npz`, files and writing are not built yet. The check phase (`src/znp_header.c`) and the build phase (`src/znp_build.c`) are separate, as design §4 says. Gates: `hardening.yaml` (lint, symbols, mutation check over 19 guards, fuzzing with its canary), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk) and `conformance.yaml` (fixtures regenerated with NumPy and checked against `np.load()`). zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
 
 Update this paragraph at the end of every stage.
 

@@ -181,6 +181,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 - `npy_header()` reads a raw vector that may stop after the header: the check phase gained a `header_only` limit that skips the data comparison but not the size limits. Paths arrive at Stage 7.
 - The check phase's limits now include `header_only`; the fuzz seeds include every fixture.
 - `zunpy_byte_order` and `zunpy_alignment` warnings, classed under `zunpy_warning`.
+- The first CI fuzz run on this stage's pull request found a header the check phase accepted with an itemsize saturated by a subarray shape of `(3, 6666666666666666666)` and no records. Two guards followed (design §12): `itemsize` (no element larger than `max_size`) and `columns` (the R columns of a record, subarray elements included, bounded by `max_fields`). The input is a permanent seed, `fuzz/seeds/regression-itemsize.bin`; 19 guards now.
 
 ---
 

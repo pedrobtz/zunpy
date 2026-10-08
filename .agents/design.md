@@ -754,7 +754,7 @@ default, since a crafted header could stall `ast.literal_eval`.
 | `max_size` | 2 GiB | before the prefix, from declared sizes |
 | `max_header` | 10,000 bytes | the length field, before the dict is read |
 | `max_dims` | 32 | the shape tuple; NumPy's own ceiling |
-| `max_fields` | 1,024 | structured dtypes |
+| `max_fields` | 1,024 | structured dtypes: the R columns, a subarray counting one per element |
 | `max_members` | 10,000 | the `.npz` central directory |
 
 When reading a connection, `max_size` is enforced while reading, at
@@ -766,6 +766,13 @@ with the bytes actually present before any allocation; a header claiming
 exceeds the bytes present is `zunpy_parse_error` (truncation); bytes
 beyond the declared size are `zunpy_parse_error` too, since NumPy's own
 reader rejects trailing data.
+
+**No element is larger than `max_size`** (*settled at Stage 2*, found by
+the fuzzer in CI): with a zero dimension nothing else bounds the itemsize,
+and a subarray shape such as `(3, 6666666666666666666)` saturates it, yet
+the build phase sizes buffers by it. **The columns a record makes are
+bounded by `max_fields`**, a subarray counting one per element, so that a
+subarray of zero-width elements cannot ask for a billion columns.
 
 **Zero-width types are bounded too** (*settled at Stage 1*). `S0`, `V0`
 and an empty record declare elements with no bytes behind them, so the
