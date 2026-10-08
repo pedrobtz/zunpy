@@ -13,7 +13,7 @@ Sibling checkouts are in `../`. `zucbor` is the model for the check-then-build s
 
 ## Current state
 
-**2026-10-08: Stage 0 in progress.** The design, the roadmap and this file exist; the package is still the `usethis` skeleton (`src/zunpy.c` is empty, the only test is the template's). Nothing in design §5 is implemented. No tracking issues exist yet. zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three.
+**2026-10-08: Stage 0 done.** The package checks 0/0/0 against zubin and zufast from `Remotes:`. What exists: the condition hierarchy (`R/conditions.R`, design §11), `zunpy_info()` with a self-test that calls into each provider header, `src/init.c` with an empty-but-one `.Call` table, hidden symbols proved by `tools/check-symbols` and the test in `test-info.R`. Nothing in design §5 beyond `zunpy_info()` is implemented. zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
 
 Update this paragraph at the end of every stage.
 
@@ -21,7 +21,7 @@ Update this paragraph at the end of every stage.
 
 Progress toward the next version is tracked as GitHub sub-issues, so the parent issue shows a progress bar such as "6 of 10".
 
-- **One parent issue per target version**, `v0.1.0`: not yet opened (Stage 0). `.github/scripts/stage-cards.sh` in `pedrobtz/packages` puts it on the board.
+- **One parent issue per target version**, `v0.1.0`: #2. `.github/scripts/stage-cards.sh` in `pedrobtz/packages` puts it on the board.
 - **One sub-issue per roadmap stage**, titled as the roadmap titles it, for example `Stage 1 — The header parser, R-free`, linking to that section's anchor. The roadmap has ten stages, 0 to 9.
 - **Every tracking issue carries the `stage` label.**
 - **Close a stage by merging its pull request.** Put `Closes #<n>` in the body. Never close a stage whose exit criteria are not met; record a deviation in its **Status:** line first.
@@ -52,7 +52,7 @@ air format .                                     # format R sources
 
 The providers are not on CRAN: install them from the sibling checkouts (`R CMD INSTALL ../zufast ../zubin ../zukomp`) or with `pak::pak("pedrobtz/<pkg>")`. roxygen2 must be 8.1.0 or newer.
 
-Gate scripts, none of which exists yet; each arrives at the roadmap stage named:
+Gate scripts; each arrives at the roadmap stage named:
 
 ```sh
 tools/run-fuzz [secs]          # Stage 1: canary first, then fuzz_header under ASan+UBSan;
@@ -67,13 +67,15 @@ tools/run-benchmarks           # Stage 7: against readBin(), RcppCNPy, reticulat
 
 ## Architecture
 
-Planned layout, from design §4, §10 and §13. Nothing under `src/` beyond the template exists yet.
+Planned layout, from design §4, §10 and §13. Today `src/` holds `init.c`, `znp_r.h` and `znp_info.c` only.
 
 ```text
 R/            decode.R, encode.R, read.R, npz.R, structured.R, dtype.R,
               conditions.R, args.R, info.R, zu_source.R (copied verbatim from zuxml),
               zunpy-package.R
 src/          init.c          registration only
+              znp_r.h         .Call entry points
+              znp_info.c      zunpy_info(): provider versions and the LinkingTo self-test
               znp_check.h     the check phase's R-free interface and the plan struct
               znp_header.c    prefix, dict grammar, descr grammar, size check, limits
               znp_build.c     plan -> R value through zubin's rw.h; C-order permutation

@@ -1,0 +1,53 @@
+#!/bin/sh
+# Fails if the built shared object (1) exports anything but R_init_zunpy,
+# which $(C_VISIBILITY) in src/Makevars should guarantee (design section 14),
+# or (2) references symbols R CMD check objects to: console output (stdout,
+# stderr, printf, puts, putchar) or ending the process (abort, exit, _exit,
+# and assert(), which reaches them).
+#
+# Usage: tools/check-symbols [path/to/zunpy.so]   (default: src/zunpy.so)
+# Build first, with R CMD INSTALL or devtools::load_all(). With CHECK_PLANT=1
+# it also proves both checks fail on a planted object.
+set -eu
+
+check() {  # check SO
+  so=$1
+  [ -f "$so" ] || { echo "no shared object at $so; build the package first" >&2; return 2; }
+  bad=0
+  # Leading underscores differ by platform (_printf on macOS), and __stdoutp /
+  # __stderrp are macOS's names for stdout / stderr.
+  BAD='^_*(stdout|stderr|stdoutp|stderrp|printf|vprintf|puts|putchar|fputs|fprintf|vfprintf|abort|exit|_exit|_Exit|assert|assert_fail|assert_rtn)$'
+  found=$(nm -u "$so" | awk '{print $NF}' | grep -E "$BAD" || true)
+  if [ -n "$found" ]; then
+    echo "FAIL: $so references symbols R CMD check reports:" >&2
+    echo "$found" | sed 's/^/  /' >&2
+    bad=1
+  fi
+  # Defined global symbols in text or data (T, D, B, R, S), minus the
+  # linker's own markers.
+  exported=$(nm -g "$so" | awk 'NF == 3 && $2 ~ /^[TDBRS]$/ {print $3}' \
+    | sed 's/^_//' \
+    | grep -Ev '^(R_init_zunpy|_init|_fini|init|fini|_?edata|_?end|_?bss_start|_?_bss_start|_?_end|_?_edata|mh_execute_header)$' || true)
+  if [ -n "$exported" ]; then
+    echo "FAIL: $so exports more than R_init_zunpy:" >&2
+    echo "$exported" | sed 's/^/  /' >&2
+    bad=1
+  fi
+  return $bad
+}
+
+if [ "${CHECK_PLANT:-}" = 1 ]; then
+  WORK=$(mktemp -d)
+  trap 'rm -rf "$WORK"' EXIT
+  printf '#include <stdio.h>\nint znp_planted(void) { return puts("x"); }\n' > "$WORK/plant.c"
+  cc -shared -fPIC "$WORK/plant.c" -o "$WORK/plant.so"
+  if check "$WORK/plant.so" 2>/dev/null; then
+    echo "FAIL: check-symbols accepted a planted export and puts()" >&2
+    exit 2
+  fi
+  echo "==> check-symbols rejects a planted object, as it must"
+fi
+
+SO="${1:-src/zunpy.so}"
+check "$SO"
+echo "==> $SO: only R_init_zunpy exported; no console-output or process-exit symbols"
