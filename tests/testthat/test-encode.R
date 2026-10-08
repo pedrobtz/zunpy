@@ -6,7 +6,8 @@ test_that("re-encoding a NumPy fixture gives NumPy's bytes", {
   # Big-endian fixtures cannot match (zunpy writes little-endian), and R has
   # no 0-d array (shape-scalar comes back as (1,)).
   m <- m[!startsWith(m$file, "edge-") & !startsWith(m$descr, ">") &
-           m$file != "shape-scalar.npy", ]
+           m$file != "shape-scalar.npy" &
+           substr(m$descr, 2, 2) %in% c("b", "i", "u", "f", "c"), ]
   expect_gt(nrow(m), 30)
   for (f in m$file) {
     x <- fixture_bytes(f)

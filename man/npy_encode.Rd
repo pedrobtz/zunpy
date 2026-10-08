@@ -4,19 +4,35 @@
 \alias{npy_encode}
 \title{Write an R array as NumPy bytes}
 \usage{
-npy_encode(x, dtype = NULL, order = c("F", "C"), na = c("error", "allow"))
+npy_encode(
+  x,
+  dtype = NULL,
+  order = c("F", "C"),
+  na = c("error", "allow"),
+  encoding = c("UTF-8", "latin1", "bytes"),
+  unit = c("us", "ns", "ms", "s")
+)
 }
 \arguments{
-\item{x}{A logical, integer, double, complex or raw vector, matrix or
-array, or a \code{bit64::integer64} vector.}
+\item{x}{A logical, integer, double, complex, raw or character vector,
+matrix or array, a factor, a \code{Date}, \code{POSIXct} or \code{difftime} vector, or
+a \code{bit64::integer64} vector.}
 
 \item{dtype}{\code{NULL} for the default of the R type, or a NumPy dtype
 string: \code{"|b1"}, \code{"|i1"}, \code{"<i2"}, \code{"<i4"}, \code{"<i8"}, \code{"|u1"}, \code{"<u2"},
-\code{"<u4"}, \code{"<u8"}, \code{"<f2"}, \code{"<f4"}, \code{"<f8"}, \code{"<c8"} or \code{"<c16"}.}
+\code{"<u4"}, \code{"<u8"}, \code{"<f2"}, \code{"<f4"}, \code{"<f8"}, \code{"<c8"}, \code{"<c16"},
+\code{"<U<n>"}, \code{"|S<n>"}, \code{"<M8[<unit>]"} or \code{"<m8[<unit>]"}.}
 
 \item{order}{\code{"F"} (R's order) or \code{"C"} (NumPy's default).}
 
 \item{na}{\code{"error"} or \code{"allow"}; see Details.}
+
+\item{encoding}{For \verb{|S<n>} output: \code{"UTF-8"} writes each string's UTF-8
+bytes, \code{"latin1"} converts to Latin-1 first (a character with no
+Latin-1 form is an error), and \code{"bytes"} writes the bytes as they are.}
+
+\item{unit}{The unit for \code{POSIXct}: \code{"us"} (the default), \code{"ns"}, \code{"ms"}
+or \code{"s"}.}
 }
 \value{
 A raw vector holding a whole \code{.npy} file.
@@ -29,16 +45,29 @@ for the same array.
 \details{
 By default the dtype follows the R type (see \code{\link[=npy_dtype]{npy_dtype()}}): logical to
 \verb{|b1}, integer to \verb{<i4}, double to \verb{<f8} (whole numbers too), complex to
-\verb{<c16}, raw to \verb{|u1} and \code{integer64} to \verb{<i8}. \code{dtype} chooses another
-numeric dtype for one call: a value that does not fit it is an error
-naming its index, never a wrap or a rounding to an integer; floats round
-to nearest even. Multi-byte dtypes are always little-endian.
+\verb{<c16}, raw to \verb{|u1}, \code{integer64} to \verb{<i8}, character and factor (its
+labels) to \verb{<U<n>} with \code{n} the most code points of any value, \code{Date} to
+\verb{<M8[D]}, \code{POSIXct} to \verb{<M8[us]} (see \code{unit}) and \code{difftime} to \code{m8} in
+its units (\code{s}, \code{m}, \code{h}, \code{D} or \code{W}). An \code{integer64} that \code{\link[=npy_decode]{npy_decode()}}
+returned for a datetime unit without an R class is written back as its
+\code{npy_dtype}.
+
+\code{dtype} chooses another dtype for one call: a numeric one for a number,
+\code{"<U<n>"} or \code{"|S<n>"} (or \code{"<U"} and \code{"|S"} for the widest value) for a
+string, \code{"<M8[s]"} and the like for a date-time. A value that does not
+fit is an error naming its index, never a wrap, a truncation or a
+rounding to an integer; floats round to nearest even. A date-time is
+written when its count in the unit reads back as the same double, and
+refused when it holds a finer fraction. Multi-byte dtypes are always
+little-endian.
 
 \code{NA} has no place in most NumPy types. A logical \code{NA} is an error unless
 \code{na = "allow"}, which writes \code{False} with a warning; an integer \code{NA} is
 an error unless \code{na = "allow"}, which writes \code{-2147483648} into \verb{<i4}
 (what R reads back as \code{NA}) or NaN into a float. A double \code{NA} is written
 bit for bit into \verb{<f8}, so R reads it back as \code{NA} and NumPy sees a NaN.
+A character \code{NA} is an error unless \code{na = "allow"}, which writes an
+empty string. A date-time \code{NA} is NaT.
 
 A matrix or array is written in R's own (Fortran) order with
 \code{fortran_order} set, which costs no copy; \code{order = "C"} writes C order

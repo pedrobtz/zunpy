@@ -9,6 +9,9 @@ npy_decode(
   order = c("R", "file"),
   int64 = c("double", "integer64"),
   na = c("error", "allow"),
+  strings = c("character", "raw"),
+  encoding = c("UTF-8", "latin1", "bytes"),
+  datetime = c("convert", "integer64"),
   max_size = 2 * 1024^3,
   max_header = 10000,
   max_dims = 32
@@ -25,6 +28,14 @@ useful) for \code{i8} and \code{u8}.}
 
 \item{na}{\code{"error"} or \code{"allow"}: whether a value that is \code{NA} in R is
 refused.}
+
+\item{strings}{\code{"character"} or \code{"raw"}, for \verb{S<n>}.}
+
+\item{encoding}{The encoding of \verb{S<n>} bytes: \code{"UTF-8"} (validated),
+\code{"latin1"} (converted to UTF-8) or \code{"bytes"} (left as bytes).}
+
+\item{datetime}{\code{"convert"} to \code{Date}, \code{POSIXct} and \code{difftime}, or
+\code{"integer64"} for the counts as they are.}
 
 \item{max_size}{The largest input accepted, in bytes.}
 
@@ -48,8 +59,24 @@ or to \code{integer64} with \code{int64 = "integer64"}; \code{c8} and \code{c16}
 Every value is converted exactly or refused: an \code{i4} of \code{-2^31} is R's
 \code{NA_integer_}, so it is an error unless \code{na = "allow"}, and a 64-bit
 integer beyond \code{2^53} in magnitude, which a double cannot hold exactly,
-is an error unless \code{int64 = "integer64"}. String, date-time, void and
-structured dtypes are not supported yet.
+is an error unless \code{int64 = "integer64"}. Structured dtypes are not
+supported yet.
+
+Strings: \verb{S<n>} (bytes) and \verb{U<n>} (code points) become character
+vectors in UTF-8, with the trailing NULs NumPy pads with removed. \verb{S<n>}
+bytes are decoded as \code{encoding} says, and \code{strings = "raw"} returns each
+as a raw vector instead. A NUL inside a value cannot live in an R string
+and is an error. \verb{V<n>} becomes a list of raw vectors.
+
+Dates and times: \code{M8[D]} becomes \code{Date}; \code{M8[s]}, \code{M8[ms]}, \code{M8[us]} and
+\code{M8[ns]} become \code{POSIXct} in UTC; \code{m8} becomes \code{difftime} in days,
+hours, minutes, weeks or seconds (\code{ms}, \code{us} and \code{ns} scaled to
+seconds). NaT is \code{NA}. A double cannot hold every nanosecond since 1970,
+so \code{M8[ns]} is the nearest double; \code{datetime = "integer64"} keeps the
+counts exactly. Units with no R class (\code{Y}, \code{M} and finer than \code{ns}) are
+returned as \code{integer64} counts either way. Such an \code{integer64} carries
+the dtype in its \code{npy_dtype} attribute, and \code{\link[=npy_encode]{npy_encode()}} writes it back
+as that dtype.
 
 A 0-d array becomes a length-1 vector and a 1-d array a vector, both
 without \code{dim}. NumPy's default C order (last index fastest) is permuted

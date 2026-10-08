@@ -23,6 +23,27 @@ static inline void *znp_dataptr(SEXP x)
     }
 }
 
+/* Text and bytes (znp_text.c). */
+SEXP znp_read_bytes(const uint8_t *base, size_t n, size_t width, int strip);
+SEXP znp_read_s(const uint8_t *base, size_t n, size_t width, int encoding,
+                int *status, size_t *bad);
+SEXP znp_read_u(const uint8_t *base, size_t n, size_t chars, int big_endian,
+                int *status, size_t *bad);
+size_t znp_text_width(SEXP x, int as_u);
+int znp_write_text(SEXP x, uint8_t *dst, size_t width, int as_u, size_t *bad);
+
+/* datetime64 and timedelta64 counts (znp_time.c). */
+int znp_read_counts(const uint8_t *base, size_t n, int big_endian,
+                    int64_t scale, double *dst, size_t *bad);
+int znp_write_counts(const double *x, size_t n, int64_t scale, uint8_t *dst,
+                     size_t *bad);
+
+/* Ticks per R unit for a datetime64 or timedelta64 unit, or 0 when the
+   unit has no R class and the counts are returned as integer64 (design
+   6.1): M8[D] is days (Date), M8[s..ns] seconds (POSIXct); m8 adds mins,
+   hours and weeks, which difftime has. */
+int64_t znp_time_scale(char kind, const char *unit);
+
 /* Memory order (znp_perm.c). */
 void znp_permute(const void *src, void *dst, size_t width, size_t n,
                  const uint64_t *shape, int k, int to_r);

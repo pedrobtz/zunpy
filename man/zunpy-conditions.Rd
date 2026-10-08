@@ -18,9 +18,9 @@ member, and \code{member} names it.
 magic string, version, header grammar or \code{descr}, or truncated or
 trailing data. Carries \code{offset}.}
 \item{\code{zunpy_invalid_error}}{The input is well formed but inconsistent:
-the shape disagrees with the data length, fields overlap, a \code{U}
-string holds a surrogate, or a checksum does not match. Carries
-\code{offset}.}
+record fields overlap or share a name, a string is not valid in its
+encoding (a surrogate in \code{U}, bytes that are not UTF-8 in \code{S}), or a
+checksum does not match. Carries \code{offset}, and \code{index} for a value.}
 \item{\code{zunpy_unsupported_type}}{A dtype or an R value with no
 counterpart: object arrays, long doubles, nested structured dtypes.
 Carries \code{dtype}.}

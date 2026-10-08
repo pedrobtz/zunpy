@@ -27,6 +27,7 @@ typedef enum {
     ZNP_BUILD_OK = 0,
     ZNP_BUILD_NA,               /* an NA with no place in the target */
     ZNP_BUILD_UNREPRESENTABLE,  /* a value or a dimension R cannot hold */
+    ZNP_BUILD_INVALID,          /* a string that is not valid in its encoding */
     ZNP_BUILD_NOT_YET           /* a dtype a later stage reads */
 } znp_build_status;
 
@@ -36,6 +37,7 @@ static const char *build_status_name(znp_build_status st)
     case ZNP_BUILD_OK:              return "ZNP_OK";
     case ZNP_BUILD_NA:              return "ZNP_BUILD_NA";
     case ZNP_BUILD_UNREPRESENTABLE: return "ZNP_BUILD_UNREPRESENTABLE";
+    case ZNP_BUILD_INVALID:         return "ZNP_BUILD_INVALID";
     case ZNP_BUILD_NOT_YET:         return "ZNP_BUILD_NOT_YET";
     }
     return "ZNP_ERR_UNKNOWN";
@@ -45,6 +47,9 @@ typedef struct {
     int order_file;     /* order = "file": no permutation */
     int as_integer64;   /* int64 = "integer64" */
     int na_allow;       /* na = "allow" */
+    int strings_raw;    /* strings = "raw": S<n> as a list of raw */
+    int encoding;       /* of S<n>: 0 UTF-8, 1 Latin-1, 2 bytes */
+    int datetime_raw;   /* datetime = "integer64" */
 } znp_opts;
 
 typedef struct {
@@ -146,6 +151,73 @@ static zb_status convert(const uint8_t *data, size_t first, size_t n,
     }
 }
 
+/* S, U, V, M and m: the elements that are not one zubin field each. Sets
+   fault on a refusal and returns R_NilValue. */
+static SEXP build_other(const uint8_t *body, const znp_plan *plan,
+                        const znp_opts *o, znp_build_fault *fault)
+{
+    const znp_dtype *dt = &plan->dtype;
+    size_t n = (size_t)plan->count, bad = 0;
+    int status = 0;
+    SEXP out;
+    switch (dt->kind) {
+    case 'S':
+        if (o->strings_raw)
+            return znp_read_bytes(body, n, (size_t)dt->itemsize, 1);
+        out = znp_read_s(body, n, (size_t)dt->itemsize, o->encoding, &status, &bad);
+        break;
+    case 'U':
+        out = znp_read_u(body, n, (size_t)dt->chars, dt->order == '>', &status, &bad);
+        break;
+    case 'V':
+        return znp_read_bytes(body, n, (size_t)dt->itemsize, 0);
+    default: { /* M, m */
+        int64_t scale = o->datetime_raw ? 0 : znp_time_scale(dt->kind, dt->unit);
+        out = PROTECT(Rf_allocVector(REALSXP, (R_xlen_t)n));
+        if (scale == 0) {
+            /* integer64: the counts as they are; NaT is NA_integer64_. */
+            zb_field f;
+            memset(&f, 0, sizeof f);
+            f.type = ZB_I64;
+            f.count = 1;
+            f.size = 8;
+            f.big_endian = dt->order == '>';
+            zb_unpack_i64(body, n, 8, &f, (int64_t *)(void *)REAL(out), &bad);
+        } else if (znp_read_counts(body, n, dt->order == '>', scale, REAL(out), &bad))
+            status = 4;
+        UNPROTECT(1);
+        break;
+    }
+    }
+    if (status != 0) {
+        fault->status = status == 2 ? ZNP_BUILD_INVALID : ZNP_BUILD_UNREPRESENTABLE;
+        fault->index = bad;
+        return R_NilValue;
+    }
+    return out;
+}
+
+/* A C-order vector of strings or a list into R's order: the permutation is
+   computed on indices, and elements are moved with the write barrier. */
+static SEXP permute_elements(SEXP src, const uint64_t *shape, int k)
+{
+    size_t n = (size_t)XLENGTH(src);
+    size_t *from = (size_t *)(void *)R_alloc(n ? n : 1, sizeof(size_t));
+    size_t *to = (size_t *)(void *)R_alloc(n ? n : 1, sizeof(size_t));
+    for (size_t i = 0; i < n; i++)
+        from[i] = i;
+    znp_permute(from, to, sizeof(size_t), n, shape, k, 1);
+    SEXP dst = PROTECT(Rf_allocVector(TYPEOF(src), (R_xlen_t)n));
+    for (size_t t = 0; t < n; t++) {
+        if (TYPEOF(src) == STRSXP)
+            SET_STRING_ELT(dst, (R_xlen_t)t, STRING_ELT(src, (R_xlen_t)to[t]));
+        else
+            SET_VECTOR_ELT(dst, (R_xlen_t)t, VECTOR_ELT(src, (R_xlen_t)to[t]));
+    }
+    UNPROTECT(1);
+    return dst;
+}
+
 static SEXP dim_attr(const uint64_t *shape, int k, int reverse)
 {
     SEXP dim = PROTECT(Rf_allocVector(INTSXP, k));
@@ -164,10 +236,11 @@ static SEXP build(const uint8_t *data, const znp_plan *plan, const znp_opts *o,
     fault->index = 0;
     fault->dim = -1;
 
-    if (plan->structured || !field_for(&plan->dtype, o, &f, &rtype)) {
+    if (plan->structured) {
         fault->status = ZNP_BUILD_NOT_YET;
         return R_NilValue;
     }
+    int simple = field_for(&plan->dtype, o, &f, &rtype);
     /* R's dim is integer; a vector may be long (design 6.2). */
     if (plan->ndim >= 2)
         for (int j = 0; j < plan->ndim; j++)
@@ -183,8 +256,16 @@ static SEXP build(const uint8_t *data, const znp_plan *plan, const znp_opts *o,
 
     size_t n = (size_t)plan->count;
     const uint8_t *body = data + plan->data_offset;
-    SEXP out = PROTECT(Rf_allocVector(rtype, (R_xlen_t)n));
-    for (size_t first = 0; first < n; first += ZNP_CHUNK) {
+    SEXP out;
+    if (!simple) {
+        out = build_other(body, plan, o, fault);
+        if (fault->status != ZNP_BUILD_OK)
+            return R_NilValue;
+        PROTECT(out);
+        rtype = TYPEOF(out);
+    } else
+        out = PROTECT(Rf_allocVector(rtype, (R_xlen_t)n));
+    for (size_t first = 0; simple && first < n; first += ZNP_CHUNK) {
         size_t m = n - first < ZNP_CHUNK ? n - first : ZNP_CHUNK;
         size_t bad = 0;
         zb_status st = convert(body, first, m, &plan->dtype, &f, o, out, &bad);
@@ -202,6 +283,12 @@ static SEXP build(const uint8_t *data, const znp_plan *plan, const znp_opts *o,
     int k = plan->ndim;
     if (k >= 2) {
         int c_order = !plan->fortran_order;
+        if (c_order && !o->order_file && (rtype == STRSXP || rtype == VECSXP)) {
+            SEXP perm = PROTECT(permute_elements(out, plan->shape, k));
+            Rf_setAttrib(perm, R_DimSymbol, dim_attr(plan->shape, k, 0));
+            UNPROTECT(2);
+            return perm;
+        }
         if (c_order && !o->order_file) {
             SEXP perm = PROTECT(Rf_allocVector(rtype, (R_xlen_t)n));
             size_t width = rtype == CPLXSXP ? sizeof(Rcomplex)
@@ -228,6 +315,9 @@ SEXP zunpy_decode(SEXP x, SEXP limits, SEXP opts)
     o.order_file = INTEGER(opts)[0];
     o.as_integer64 = INTEGER(opts)[1];
     o.na_allow = INTEGER(opts)[2];
+    o.strings_raw = INTEGER(opts)[3];
+    o.encoding = INTEGER(opts)[4];
+    o.datetime_raw = INTEGER(opts)[5];
 
     const uint8_t *data = RAW(x);
     size_t size = (size_t)XLENGTH(x);

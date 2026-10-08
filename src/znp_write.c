@@ -28,6 +28,7 @@ typedef enum {
     ZNP_WRITE_OK = 0,
     ZNP_WRITE_NA,           /* an NA the target cannot hold */
     ZNP_WRITE_RANGE,        /* a value outside the target type */
+    ZNP_WRITE_INVALID,      /* a string that is not valid UTF-8 */
     ZNP_WRITE_TOO_LARGE     /* more bytes than a raw vector holds */
 } znp_write_status;
 
@@ -37,6 +38,7 @@ static const char *write_status_name(znp_write_status st)
     case ZNP_WRITE_OK:        return "ZNP_OK";
     case ZNP_WRITE_NA:        return "ZNP_WRITE_NA";
     case ZNP_WRITE_RANGE:     return "ZNP_WRITE_RANGE";
+    case ZNP_WRITE_INVALID:   return "ZNP_WRITE_INVALID";
     case ZNP_WRITE_TOO_LARGE: return "ZNP_WRITE_TOO_LARGE";
     }
     return "ZNP_ERR_UNKNOWN";
@@ -64,8 +66,10 @@ static size_t format_dict(char *buf, size_t cap, const char *descr,
 }
 
 typedef struct {
-    char kind;          /* b i u f c */
-    int  width;         /* bytes */
+    char kind;          /* b i u f c, S U, M m */
+    int  width;         /* bytes; for U and S the character width, -1 for the widest value */
+    char unit[4];       /* M and m */
+    int64_t scale;      /* M and m from doubles: ticks per R unit */
     int  na_allow;
     int  is_int64;      /* x is bit64's integer64 */
 } znp_target;
@@ -96,6 +100,19 @@ static zb_status pack(SEXP x, const znp_target *t, uint8_t *dst, size_t *bad,
     size_t n = (size_t)XLENGTH(x), w = (size_t)t->width;
     zb_field f = target_field(t);
     *replaced = 0;
+    if (t->kind == 'U' || t->kind == 'S') {
+        int st = znp_write_text(x, dst, (size_t)t->width, t->kind == 'U', bad);
+        return st == 0 ? ZB_OK : st == 1 ? ZB_ERR_RANGE : ZB_ERR_INVALID;
+    }
+    if (t->kind == 'M' || t->kind == 'm') {
+        if (t->is_int64) {
+            /* Counts as they are; NA_integer64_ is NaT. */
+            f.type = ZB_I64;
+            f.size = 8;
+            return zb_pack_i64(dst, n, 8, &f, (const int64_t *)(const void *)REAL(x), 1, bad);
+        }
+        return znp_write_counts(REAL(x), n, t->scale, dst, bad) ? ZB_ERR_RANGE : ZB_OK;
+    }
     switch (TYPEOF(x)) {
     case RAWSXP:
         if (n)
@@ -151,14 +168,17 @@ static zb_status pack(SEXP x, const znp_target *t, uint8_t *dst, size_t *bad,
     }
 }
 
-/* spec: list(kind, width); shape: R's dims as doubles (the logical shape);
-   opts: c(order_c, na_allow, is_int64). Returns list(status, index, value,
-   replaced). */
+/* spec: list(kind, width, unit, scale); shape: R's dims as doubles (the
+   logical shape); opts: c(order_c, na_allow, is_int64). Returns
+   list(status, index, value, replaced). */
 SEXP zunpy_encode(SEXP x, SEXP spec, SEXP shape_r, SEXP opts)
 {
     znp_target t;
+    memset(&t, 0, sizeof t);
     t.kind = CHAR(STRING_ELT(VECTOR_ELT(spec, 0), 0))[0];
     t.width = INTEGER(VECTOR_ELT(spec, 1))[0];
+    snprintf(t.unit, sizeof t.unit, "%s", CHAR(STRING_ELT(VECTOR_ELT(spec, 2), 0)));
+    t.scale = (int64_t)REAL(VECTOR_ELT(spec, 3))[0];
     int order_c = INTEGER(opts)[0];
     t.na_allow = INTEGER(opts)[1];
     t.is_int64 = INTEGER(opts)[2];
@@ -179,9 +199,24 @@ SEXP zunpy_encode(SEXP x, SEXP spec, SEXP shape_r, SEXP opts)
     int fortran = layout_matters && !order_c;
     int permute = layout_matters && order_c;
 
-    char descr[16];
-    int one_byte = t.width == 1 && t.kind != 'c';
-    snprintf(descr, sizeof descr, "%c%c%d", one_byte ? '|' : '<', t.kind, t.width);
+    /* The width of a string dtype: given, or the widest value, at least 1
+       as NumPy makes it. */
+    if ((t.kind == 'U' || t.kind == 'S') && t.width < 0) {
+        size_t wid = znp_text_width(x, t.kind == 'U');
+        if (wid > (size_t)INT_MAX / 4)
+            wid = (size_t)INT_MAX / 4;
+        t.width = wid > 0 ? (int)wid : 1;
+    }
+    char descr[32];
+    if (t.kind == 'U')
+        snprintf(descr, sizeof descr, "<U%d", t.width);
+    else if (t.kind == 'S')
+        snprintf(descr, sizeof descr, "|S%d", t.width);
+    else if (t.kind == 'M' || t.kind == 'm')
+        snprintf(descr, sizeof descr, "<%c8[%s]", t.kind, t.unit);
+    else
+        snprintf(descr, sizeof descr, "%c%c%d", t.width == 1 && t.kind != 'c' ? '|' : '<',
+                 t.kind, t.width);
 
     char dict[ZNP_MAX_DIMS_CAP * 24 + 256];
     size_t dlen = format_dict(dict, sizeof dict, descr, fortran, shape, k);
@@ -204,8 +239,9 @@ SEXP zunpy_encode(SEXP x, SEXP spec, SEXP shape_r, SEXP opts)
         SET_STRING_ELT(nm, i, Rf_mkChar(names[i]));
     Rf_setAttrib(out, R_NamesSymbol, nm);
 
-    size_t w = (size_t)t.width;
-    if (n > ((size_t)R_XLEN_T_MAX - head) / w) {
+    size_t w = t.kind == 'U' ? 4 * (size_t)t.width
+             : (t.kind == 'M' || t.kind == 'm') ? 8 : (size_t)t.width;
+    if (w > 0 && n > ((size_t)R_XLEN_T_MAX - head) / w) {
         SET_VECTOR_ELT(out, 0, Rf_mkString(write_status_name(ZNP_WRITE_TOO_LARGE)));
         UNPROTECT(2);
         return out;
@@ -230,7 +266,8 @@ SEXP zunpy_encode(SEXP x, SEXP spec, SEXP shape_r, SEXP opts)
     R_xlen_t replaced = 0;
     zb_status st = pack(x, &t, into, &bad, &replaced);
     if (st != ZB_OK) {
-        znp_write_status ws = st == ZB_ERR_NA ? ZNP_WRITE_NA : ZNP_WRITE_RANGE;
+        znp_write_status ws = st == ZB_ERR_NA ? ZNP_WRITE_NA
+                            : st == ZB_ERR_INVALID ? ZNP_WRITE_INVALID : ZNP_WRITE_RANGE;
         SET_VECTOR_ELT(out, 0, Rf_mkString(write_status_name(ws)));
         SET_VECTOR_ELT(out, 1, Rf_ScalarReal((double)bad + 1));
         UNPROTECT(3);
