@@ -2,6 +2,9 @@
 
 ## Reading
 
+- [`npy_read()`](https://pedrobtz.github.io/zunpy/reference/npy_read.md)
+  : Read a NumPy file
+
 - [`npy_decode()`](https://pedrobtz.github.io/zunpy/reference/npy_decode.md)
   : Read a NumPy array from bytes
 
@@ -15,6 +18,8 @@
 
 ## Writing
 
+- [`npy_write()`](https://pedrobtz.github.io/zunpy/reference/npy_write.md)
+  : Write a NumPy file
 - [`npy_encode()`](https://pedrobtz.github.io/zunpy/reference/npy_encode.md)
   : Write an R array as NumPy bytes
 - [`npy_dtype()`](https://pedrobtz.github.io/zunpy/reference/npy_dtype.md)

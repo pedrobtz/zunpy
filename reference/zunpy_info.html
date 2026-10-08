@@ -51,7 +51,8 @@ and the host's byte order, for bug reports.</p>
 versions of their headers compiled in; <code>host_big_endian</code>, <code>TRUE</code> on a
 big-endian host (files are read the same way on either); and
 <code>selftest</code>, <code>TRUE</code> when one call into each provider header gave the
-expected answer.</p>
+expected answer; and <code>fast_path</code>, <code>TRUE</code> when little-endian <code>f8</code>, <code>i4</code>
+and <code>c16</code> data are copied whole rather than element by element.</p>
     </div>
 
     <div class="section level2">
@@ -70,6 +71,9 @@ expected answer.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $selftest</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $fast_path</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 </code></pre></div>

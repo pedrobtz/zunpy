@@ -14,7 +14,9 @@ zunpy_info()
 A list: `version`, zunpy's version; `zubin` and `zufast`, the versions
 of their headers compiled in; `host_big_endian`, `TRUE` on a big-endian
 host (files are read the same way on either); and `selftest`, `TRUE`
-when one call into each provider header gave the expected answer.
+when one call into each provider header gave the expected answer; and
+`fast_path`, `TRUE` when little-endian `f8`, `i4` and `c16` data are
+copied whole rather than element by element.
 
 ## Examples
 
@@ -33,6 +35,9 @@ zunpy_info()
 #> [1] FALSE
 #> 
 #> $selftest
+#> [1] TRUE
+#> 
+#> $fast_path
 #> [1] TRUE
 #> 
 ```

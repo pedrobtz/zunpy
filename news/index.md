@@ -2,6 +2,17 @@
 
 ## zunpy 0.0.0.9000
 
+- [`npy_read()`](https://pedrobtz.github.io/zunpy/reference/npy_read.md)
+  and
+  [`npy_write()`](https://pedrobtz.github.io/zunpy/reference/npy_write.md)
+  read and write `.npy` and `.npz` files at a path, a URL or a
+  connection, bounded by `max_size`;
+  [`npy_header()`](https://pedrobtz.github.io/zunpy/reference/npy_header.md)
+  and
+  [`npy_names()`](https://pedrobtz.github.io/zunpy/reference/npy_names.md)
+  take them too. Reading and writing a file are within 10% of
+  [`readBin()`](https://rdrr.io/r/base/readBin.html) and
+  [`writeBin()`](https://rdrr.io/r/base/readBin.html).
 - `.npz` archives:
   [`npy_decode()`](https://pedrobtz.github.io/zunpy/reference/npy_decode.md)
   reads one as a named list (`names` for some members),

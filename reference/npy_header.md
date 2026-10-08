@@ -1,7 +1,8 @@
 # Read the header of a NumPy array
 
-Parses and checks a `.npy` header without reading its data, for a raw
-vector that holds at least the header.
+Parses and checks a `.npy` header without reading its data: from a raw
+vector that holds at least the header, or from a path, URL or
+connection, of which only the header's bytes are read.
 
 ## Usage
 
@@ -13,7 +14,8 @@ npy_header(x, max_header = 10000)
 
 - x:
 
-  A raw vector holding a `.npy` file, or its first bytes.
+  A raw vector holding a `.npy` file or its first bytes, or a path, URL
+  or connection.
 
 - max_header:
 

@@ -1,7 +1,8 @@
 # The names of the arrays in a `.npz`
 
-Reads the directory of a `.npz` archive held in a raw vector, without
-reading or inflating any member.
+Reads the directory of a `.npz` archive, without inflating or decoding
+any member. A path, URL or connection is read into memory first, bounded
+by `max_size`.
 
 ## Usage
 
@@ -13,7 +14,7 @@ npy_names(x, max_size = 2 * 1024^3, max_members = 10000)
 
 - x:
 
-  A raw vector holding a `.npz` file.
+  A raw vector holding a `.npz` file, or a path, URL or connection.
 
 - max_size:
 
