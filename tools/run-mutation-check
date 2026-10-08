@@ -1,0 +1,69 @@
+#!/bin/sh
+# Proves the check phase's security guards are not vacuous (roadmap Stage
+# 1): each guard in src/znp_header.c, marked "/* GUARD: name */" on its
+# if-line, is disabled in turn in a scratch copy, and its hostile input
+# (tools/mutation-cases.R) must then get a different answer. A guard whose
+# removal changes nothing was never doing anything. Checked through
+# fuzz/probe.c, the R-free check phase, not the test suite. Run from the
+# package root.
+set -eu
+
+CC=${CC:-cc}
+INC=$(tools/zufast-include)
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+build() {  # build DIR OUT
+  $CC -std=gnu17 -O1 -DZNP_STANDALONE -I"$1" -I"$INC" \
+    fuzz/probe.c "$1/znp_header.c" -o "$2"
+}
+
+Rscript tools/mutation-cases.R "$WORK/cases" > "$WORK/cases.txt"
+
+# Every marked guard has a case, and every case a guard.
+marked=$(grep -o '/\* GUARD: [a-z0-9-]* \*/' src/znp_header.c | sed 's/.* GUARD: \([a-z0-9-]*\) .*/\1/' | sort)
+listed=$(cut -d'|' -f1 "$WORK/cases.txt" | sort)
+if [ "$marked" != "$listed" ]; then
+  echo "FAIL: guards and cases differ:" >&2
+  echo "marked: $marked" | tr '\n' ' ' >&2; echo >&2
+  echo "cases:  $listed" | tr '\n' ' ' >&2; echo >&2
+  exit 1
+fi
+
+build src "$WORK/probe-original"
+while IFS='|' read -r guard file opts want; do
+  [ -n "$guard" ] || continue
+  # shellcheck disable=SC2086
+  got=$("$WORK/probe-original" "$file" $opts)
+  if [ "$got" != "$want" ]; then
+    echo "FAIL: $guard: gives $got with the guard, expected $want" >&2
+    echo 1 > "$WORK/failed"
+    continue
+  fi
+  n=$(grep -c "GUARD: $guard \*/" src/znp_header.c || true)
+  if [ "$n" != 1 ]; then
+    echo "FAIL: $guard: found $n guard markers in src/znp_header.c, expected 1" >&2
+    echo 1 > "$WORK/failed"
+    continue
+  fi
+  rm -rf "$WORK/src"
+  cp -R src "$WORK/src"
+  sed "s|if (\(.*\))\( *{\)\{0,1\} */\* GUARD: $guard \*/|if (0 \&\& (\1))\2|" \
+    src/znp_header.c > "$WORK/src/znp_header.c"
+  if cmp -s src/znp_header.c "$WORK/src/znp_header.c"; then
+    echo "FAIL: $guard: the mutation did not apply" >&2
+    echo 1 > "$WORK/failed"
+    continue
+  fi
+  build "$WORK/src" "$WORK/probe-$guard"
+  # shellcheck disable=SC2086
+  mutant=$("$WORK/probe-$guard" "$file" $opts 2>/dev/null) || mutant="a crash (exit $?)"
+  if [ "$mutant" = "$want" ]; then
+    echo "FAIL: $guard: removing the guard changes nothing (still $want)" >&2
+    echo 1 > "$WORK/failed"
+  else
+    echo "==> $guard: $want with the guard, $mutant without"
+  fi
+done < "$WORK/cases.txt"
+[ ! -f "$WORK/failed" ] || exit 1
+echo "==> every guard is load-bearing"

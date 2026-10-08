@@ -1,0 +1,12 @@
+#!/bin/sh
+# Prints the include directory of zufast, the only header provider the
+# R-free check phase needs: $ZUFAST_INC if set (CI checks zufast out
+# beside the package), else the installed package's.
+set -eu
+if [ -n "${ZUFAST_INC:-}" ]; then
+  echo "$ZUFAST_INC"
+  exit 0
+fi
+inc=$(Rscript -e 'cat(system.file("include", package = "zufast"))')
+[ -n "$inc" ] || { echo "zufast is not installed; set ZUFAST_INC" >&2; exit 2; }
+echo "$inc"

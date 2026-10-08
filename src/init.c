@@ -7,7 +7,8 @@
    (roadmap); R_useDynamicSymbols(FALSE) keeps anything not listed here
    unreachable by name. */
 static const R_CallMethodDef CallEntries[] = {
-    {"zunpy_build_info", (DL_FUNC) &zunpy_build_info, 0},
+    {"zunpy_build_info",   (DL_FUNC) &zunpy_build_info,   0},
+    {"zunpy_header_check", (DL_FUNC) &zunpy_header_check, 2},
     {NULL, NULL, 0}
 };
 

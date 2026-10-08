@@ -113,3 +113,60 @@ znp_limit_error <- function(limit, limit_value, message, member = NULL,
 znp_io_error <- function(message, call = NULL) {
   znp_abort("zunpy_io_error", message, call = call)
 }
+
+# A status name from C -> a condition, by the enumerator's name. offset is
+# the 0-based byte offset of the fault in x. Statuses that only misuse of
+# the internal API can cause map to the bare zunpy_error: still catchable,
+# never mistaken for a fault in the input.
+znp_raise_status <- function(status, offset, x, limits, member = NULL,
+                             call = NULL) {
+  parse <- c(
+    ZNP_ERR_MAGIC = "not a .npy file: the magic string is wrong",
+    ZNP_ERR_VERSION = "unsupported .npy format version",
+    ZNP_ERR_TRUNCATED = "the input ends early",
+    ZNP_ERR_TRAILING = "bytes follow the declared data",
+    ZNP_ERR_ALIGN = "the data does not start at a multiple of 16 bytes",
+    ZNP_ERR_ENCODING = "the header holds an invalid or NUL character",
+    ZNP_ERR_SYNTAX = "the header is not a valid literal",
+    ZNP_ERR_DEPTH = "the header is nested too deeply",
+    ZNP_ERR_KEY = "the header's keys are not descr, fortran_order and shape",
+    ZNP_ERR_TYPE = "a header value has the wrong type",
+    ZNP_ERR_DESCR = "the dtype is not valid",
+    ZNP_ERR_SHAPE = "a dimension is negative or too large"
+  )
+  at <- sprintf(" (at byte %s)", format(offset, scientific = FALSE))
+  if (status %in% names(parse)) {
+    znp_parse_error(offset, paste0(parse[[status]], at), member = member,
+                    call = call)
+  }
+  limit <- c(
+    ZNP_ERR_SIZE_LIMIT = "max_size",
+    ZNP_ERR_HEADER_LIMIT = "max_header",
+    ZNP_ERR_DIMS_LIMIT = "max_dims",
+    ZNP_ERR_FIELDS_LIMIT = "max_fields"
+  )
+  if (status %in% names(limit)) {
+    l <- limit[[status]]
+    value <- limits[[match(l, c("max_size", "max_header", "max_dims",
+                                "max_fields"))]]
+    znp_limit_error(l, value, sprintf(
+      "`%s` (%s) reached%s", l, format(value, scientific = FALSE), at
+    ), member = member, call = call)
+  }
+  switch(status,
+    ZNP_ERR_LAYOUT = znp_invalid_error(
+      offset, paste0("the record fields overlap or do not fit", at),
+      member = member, call = call
+    ),
+    ZNP_ERR_UNSUPPORTED = {
+      dtype <- znp_quoted_at(x, offset)
+      znp_unsupported_type(dtype, paste0(
+        "unsupported dtype",
+        if (!is.na(dtype)) sprintf(" '%s'", dtype),
+        at
+      ), member = member, call = call)
+    },
+    znp_abort(character(), paste0("internal error: ", status),
+              status = status, call = call)
+  )
+}
