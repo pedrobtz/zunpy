@@ -66,6 +66,20 @@ SEXP zunpy_zip_members(SEXP x, SEXP limits)
     return out;
 }
 
+/* x[offset + 1:n] as a new raw vector; the directory check has bounded
+   both by the length of x. */
+SEXP zunpy_slice(SEXP x, SEXP offset, SEXP n)
+{
+    double off = REAL(offset)[0], len = REAL(n)[0];
+    if (off < 0 || len < 0 || off + len > (double)XLENGTH(x))
+        return R_NilValue;
+    SEXP out = PROTECT(Rf_allocVector(RAWSXP, (R_xlen_t)len));
+    if (len > 0)
+        memcpy(RAW(out), RAW(x) + (size_t)off, (size_t)len);
+    UNPROTECT(1);
+    return out;
+}
+
 SEXP zunpy_crc32(SEXP x)
 {
     return Rf_ScalarReal((double)znp_crc32(RAW(x), (size_t)XLENGTH(x)));

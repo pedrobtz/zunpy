@@ -1,12 +1,16 @@
 test_that("zunpy_info() reports the build", {
   i <- zunpy_info()
   expect_named(i, c("version", "zubin", "zufast", "host_big_endian",
-                    "selftest"))
+                    "selftest", "fast_path"))
   expect_match(i$zubin, "^[0-9]+\\.[0-9]+\\.[0-9]+$")
   expect_match(i$zufast, "^[0-9]+\\.[0-9]+\\.[0-9]+$")
   expect_true(package_version(i$zufast) >= "0.1.0")
   expect_type(i$host_big_endian, "logical")
   expect_true(i$selftest)
+  # The fast path is on exactly when the host is little-endian, unless the
+  # build forces the element-by-element path (ZUNPY_FORCED_BE in CI).
+  forced <- nzchar(Sys.getenv("ZUNPY_FORCED_BE"))
+  expect_identical(i$fast_path, !i$host_big_endian && !forced)
 })
 
 test_that("the shared object exports exactly R_init_zunpy", {

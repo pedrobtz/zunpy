@@ -4,6 +4,8 @@
 #define R_NO_REMAP
 #include <Rinternals.h>
 
+#include <zubin.h>
+
 #include "znp_check.h"
 
 /* Shared glue (znp_r_header.c). */
@@ -47,17 +49,41 @@ int znp_write_counts(const double *x, size_t n, int64_t scale, uint8_t *dst,
    hours and weeks, which difftime has. */
 int64_t znp_time_scale(char kind, const char *unit);
 
+/* The memcpy fast path (design 6.1, 16): only when the host is
+   little-endian, which -DZNP_FORCE_BE_HOST denies so that a little-endian
+   machine runs the element-by-element path a big-endian one would. */
+static inline int znp_fast_path(void)
+{
+#ifdef ZNP_FORCE_BE_HOST
+    return 0;
+#else
+    return !zb_host_big_endian();
+#endif
+}
+
+/* Whether v holds NA_integer_. No early exit, so that the compiler can
+   vectorise the loop; the index is looked for only when there is one. */
+static inline int znp_has_na(const int *v, size_t n)
+{
+    int any = 0;
+    for (size_t i = 0; i < n; i++)
+        any |= v[i] == NA_INTEGER;
+    return any;
+}
+
 /* Memory order (znp_perm.c). */
 void znp_permute(const void *src, void *dst, size_t width, size_t n,
                  const uint64_t *shape, int k, int to_r);
 
 /* .Call entry points, registered in init.c. */
 SEXP zunpy_build_info(void);
+SEXP zunpy_fast_path(void);
 SEXP zunpy_header_check(SEXP x, SEXP limits);
 SEXP zunpy_decode(SEXP x, SEXP limits, SEXP opts);
 SEXP zunpy_encode(SEXP x, SEXP spec, SEXP shape, SEXP opts);
 SEXP zunpy_zip_members(SEXP x, SEXP limits);
 SEXP zunpy_crc32(SEXP x);
+SEXP zunpy_slice(SEXP x, SEXP offset, SEXP n);
 SEXP zunpy_zip_build(SEXP names, SEXP methods, SEXP crcs, SEXP usizes,
                      SEXP payloads);
 SEXP zunpy_encode_records(SEXP cols, SEXP specs, SEXP names, SEXP shape,

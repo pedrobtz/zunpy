@@ -165,6 +165,32 @@ static SEXP read_column(const uint8_t *base, size_t n, size_t stride,
 
     if (field_for(dt, o, &f, &rtype)) {
         out = PROTECT(Rf_allocVector(rtype, (R_xlen_t)n));
+        /* Little-endian f8, i4 and c16, contiguous, on a little-endian host:
+           the bytes are already R's (design 16). */
+        size_t w = (size_t)dt->itemsize;
+        if (znp_fast_path() && dt->order == '<' && stride == w &&
+            ((dt->kind == 'f' && w == 8) || (dt->kind == 'i' && w == 4) ||
+             (dt->kind == 'c' && w == 16))) {
+            char *d = (char *)znp_dataptr(out);
+            for (size_t first = 0; first < n; first += ZNP_CHUNK) {
+                size_t m = n - first < ZNP_CHUNK ? n - first : ZNP_CHUNK;
+                memcpy(d + first * w, base + first * w, m * w);
+                R_CheckUserInterrupt();
+            }
+            if (rtype == INTSXP && !o->na_allow && znp_has_na(INTEGER(out), n)) {
+                /* -2^31 is NA_integer_, refused as zubin's kernel refuses it. */
+                const int *v = INTEGER(out);
+                size_t i = 0;
+                while (v[i] != NA_INTEGER)
+                    i++;
+                fault->status = ZNP_BUILD_NA;
+                fault->index = i;
+                UNPROTECT(1);
+                return R_NilValue;
+            }
+            UNPROTECT(1);
+            return out;
+        }
         for (size_t first = 0; first < n; first += ZNP_CHUNK) {
             size_t m = n - first < ZNP_CHUNK ? n - first : ZNP_CHUNK;
             zb_status st = convert(base, first, m, stride, &f, o, out, &bad);

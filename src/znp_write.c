@@ -167,6 +167,20 @@ static zb_status pack(SEXP x, const znp_target *t, uint8_t *dst, size_t stride,
         }
         return znp_write_counts(REAL(x), n, t->scale, dst, stride, bad) ? ZB_ERR_RANGE : ZB_OK;
     }
+    /* R's own bytes are the file's for f8, i4 and c16, contiguous, on a
+       little-endian host (design 16); an i4 holding NA goes the long way,
+       which refuses it or writes it as na says. */
+    if (znp_fast_path() && stride == (size_t)t->width && !t->is_int64 &&
+        ((TYPEOF(x) == REALSXP && t->kind == 'f' && t->width == 8) ||
+         (TYPEOF(x) == CPLXSXP && t->kind == 'c' && t->width == 16) ||
+         (TYPEOF(x) == INTSXP && t->kind == 'i' && t->width == 4))) {
+        int clean = !(TYPEOF(x) == INTSXP && !t->na_allow && znp_has_na(INTEGER(x), n));
+        if (clean) {
+            if (n)
+                memcpy(dst, znp_dataptr(x), n * stride);
+            return ZB_OK;
+        }
+    }
     switch (TYPEOF(x)) {
     case RAWSXP:
         for (size_t i = 0; i < n; i++)

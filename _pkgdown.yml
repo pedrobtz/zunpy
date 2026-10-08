@@ -11,11 +11,13 @@ development:
 reference:
   - title: Reading
     contents:
+      - npy_read
       - npy_decode
       - npy_header
       - npy_names
   - title: Writing
     contents:
+      - npy_write
       - npy_encode
       - npy_dtype
   - title: About

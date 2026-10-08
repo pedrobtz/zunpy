@@ -7,7 +7,8 @@
 npy_header(x, max_header = 10000)
 }
 \arguments{
-\item{x}{A raw vector holding a \code{.npy} file, or its first bytes.}
+\item{x}{A raw vector holding a \code{.npy} file or its first bytes, or a
+path, URL or connection.}
 
 \item{max_header}{The largest header accepted, in bytes; NumPy's own
 default.}
@@ -21,8 +22,9 @@ empty for a 0-d array; \code{itemsize}, bytes per element; and
 \code{data_offset}, where the data starts.
 }
 \description{
-Parses and checks a \code{.npy} header without reading its data, for a raw
-vector that holds at least the header.
+Parses and checks a \code{.npy} header without reading its data: from a raw
+vector that holds at least the header, or from a path, URL or connection,
+of which only the header's bytes are read.
 }
 \examples{
 dict <- "{'descr': '<i4', 'fortran_order': False, 'shape': (3,), }"

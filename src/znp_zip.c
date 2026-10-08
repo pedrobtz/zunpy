@@ -27,7 +27,11 @@
 
 /* ---- CRC-32 (ISO 3309, the polynomial ZIP uses; D6) --------------------- */
 
-static uint32_t crc_table[256];
+/* Slicing-by-8: eight tables let the loop take eight bytes a step, several
+   times faster than one byte a step, with the same result. The tables are
+   filled once; filling them twice gives the same values, so a race between
+   two threads would be harmless, and R calls this from one thread. */
+static uint32_t crc_table[8][256];
 static int crc_ready = 0;
 
 static void crc_init(void)
@@ -36,8 +40,11 @@ static void crc_init(void)
         uint32_t c = i;
         for (int k = 0; k < 8; k++)
             c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
-        crc_table[i] = c;
+        crc_table[0][i] = c;
     }
+    for (uint32_t i = 0; i < 256; i++)
+        for (int t = 1; t < 8; t++)
+            crc_table[t][i] = (crc_table[t - 1][i] >> 8) ^ crc_table[0][crc_table[t - 1][i] & 0xFF];
     crc_ready = 1;
 }
 
@@ -46,8 +53,17 @@ uint32_t znp_crc32(const uint8_t *data, size_t n)
     if (!crc_ready)
         crc_init();
     uint32_t c = 0xFFFFFFFFu;
-    for (size_t i = 0; i < n; i++)
-        c = crc_table[(c ^ data[i]) & 0xFF] ^ (c >> 8);
+    size_t i = 0;
+    for (; i + 8 <= n; i += 8) {
+        uint32_t lo = c ^ zuf_load_le32(data + i);
+        uint32_t hi = zuf_load_le32(data + i + 4);
+        c = crc_table[7][lo & 0xFF] ^ crc_table[6][(lo >> 8) & 0xFF] ^
+            crc_table[5][(lo >> 16) & 0xFF] ^ crc_table[4][lo >> 24] ^
+            crc_table[3][hi & 0xFF] ^ crc_table[2][(hi >> 8) & 0xFF] ^
+            crc_table[1][(hi >> 16) & 0xFF] ^ crc_table[0][hi >> 24];
+    }
+    for (; i < n; i++)
+        c = crc_table[0][(c ^ data[i]) & 0xFF] ^ (c >> 8);
     return c ^ 0xFFFFFFFFu;
 }
 
