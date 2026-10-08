@@ -3,7 +3,8 @@
 
 test_that("every plain fixture decodes to the values NumPy wrote", {
   m <- fixtures_manifest()
-  m <- m[!startsWith(m$file, "edge-"), ]
+  m <- m[!startsWith(m$file, "edge-") &
+           substr(m$descr, 2, 2) %in% c("b", "i", "u", "f", "c"), ]
   expect_gt(nrow(m), 50)
   for (i in seq_len(nrow(m))) {
     row <- m[i, ]
@@ -85,10 +86,11 @@ test_that("a dimension above 2^31 - 1 is unrepresentable", {
   expect_true(is.na(e$index))
 })
 
-test_that("dtypes of later stages are refused, classed", {
-  x <- npy_header_bytes(npy_dict("'<U2'"), raw(8))
-  e <- expect_zunpy_error(npy_decode(x), "zunpy_unsupported_type")
-  expect_identical(e$dtype, "<U2")
+test_that("structured dtypes are refused until Stage 5, classed", {
+  x <- npy_header_bytes(
+    "{'descr': [('a', '<i4')], 'fortran_order': False, 'shape': (1,), }", raw(4)
+  )
+  expect_zunpy_error(npy_decode(x), "zunpy_unsupported_type")
 })
 
 test_that("a native byte order and 16-byte alignment warn", {

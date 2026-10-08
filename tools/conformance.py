@@ -14,6 +14,25 @@ import numpy as np
 d = sys.argv[1]
 
 
+def show(v):
+    """A value as tools/make-fixtures.py writes it in a MANIFEST."""
+    if isinstance(v, str):
+        return "s:" + v.encode("utf-8", "surrogatepass").hex()
+    if isinstance(v, (bytes, np.void)):
+        return "b:" + bytes(v).hex()
+    if isinstance(v, (bool, np.bool_)):
+        return "True" if v else "False"
+    if isinstance(v, complex):
+        return f"{show(v.real)}:{show(v.imag)}"
+    if isinstance(v, float):
+        if v != v:
+            return "nan"
+        if v in (float("inf"), float("-inf")):
+            return "inf" if v > 0 else "-inf"
+        return v.hex()
+    return str(v)
+
+
 def parse(tok):
     """A MANIFEST value as a Python object: R writes floats with %a and
     Python with float.hex(), so values are compared, not strings."""
@@ -47,14 +66,26 @@ for r in rows:
     a = np.load(os.path.join(d, r["file"]))
     shape = ",".join(str(s) for s in a.shape)
     order = "F" if a.flags.f_contiguous and not a.flags.c_contiguous else "C"
-    got = np.array(a, order="C").reshape(-1).tolist()
-    want = [parse(t) for t in r["values"].split(" ")] if r["values"] else []
+    flat = np.array(a, order="C").reshape(-1)
+    if a.dtype.kind in "Mm":
+        got = ["NaT" if c == -(2**63) else str(c) for c in flat.view(flat.dtype.str[0] + "i8").tolist()]
+    else:
+        got = [show(v) for v in flat.tolist()]
+    want = r["values"].split(" ") if r["values"] else []
     for what, g, w in [("descr", a.dtype.str, r["descr"]), ("shape", shape, r["shape"]),
                        ("order", order, r["order"])]:
         if g != w:
             print(f"FAIL: {r['file']}: {what} is {g!r}, MANIFEST says {w!r}")
             bad += 1
-    if len(got) != len(want) or not all(same(g, w) for g, w in zip(got, want)):
+    # Equal as text, or as numbers: R writes floats with %a.
+    def agree(g, w):
+        if g == w:
+            return True
+        try:
+            return same(parse(g), parse(w))
+        except ValueError:
+            return False
+    if len(got) != len(want) or not all(agree(g, w) for g, w in zip(got, want)):
         print(f"FAIL: {r['file']}: values differ: {got[:6]} against {want[:6]}")
         bad += 1
 if bad:

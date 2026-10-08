@@ -16,9 +16,9 @@
 #'     magic string, version, header grammar or `descr`, or truncated or
 #'     trailing data. Carries `offset`.}
 #'   \item{`zunpy_invalid_error`}{The input is well formed but inconsistent:
-#'     the shape disagrees with the data length, fields overlap, a `U`
-#'     string holds a surrogate, or a checksum does not match. Carries
-#'     `offset`.}
+#'     record fields overlap or share a name, a string is not valid in its
+#'     encoding (a surrogate in `U`, bytes that are not UTF-8 in `S`), or a
+#'     checksum does not match. Carries `offset`, and `index` for a value.}
 #'   \item{`zunpy_unsupported_type`}{A dtype or an R value with no
 #'     counterpart: object arrays, long doubles, nested structured dtypes.
 #'     Carries `dtype`.}
@@ -76,9 +76,10 @@ znp_parse_error <- function(offset, message, member = NULL, call = NULL) {
             call = call)
 }
 
-znp_invalid_error <- function(offset, message, member = NULL, call = NULL) {
-  znp_abort("zunpy_invalid_error", message, offset = offset, member = member,
-            call = call)
+znp_invalid_error <- function(offset, message, index = NA_real_,
+                              member = NULL, call = NULL) {
+  znp_abort("zunpy_invalid_error", message, offset = offset, index = index,
+            member = member, call = call)
 }
 
 znp_unsupported_type <- function(dtype, message, member = NULL, call = NULL) {
@@ -178,10 +179,17 @@ znp_raise_status <- function(status, offset, x, limits, member = NULL,
       if (is.na(index)) {
         "a dimension is larger than R's 2^31 - 1"
       } else {
-        sprintf("element %s cannot be held exactly; see `int64`",
-                format(index, scientific = FALSE))
+        sprintf(
+          "element %s cannot be held in R: beyond 2^53, or a string with NUL",
+          format(index, scientific = FALSE)
+        )
       },
       offset = offset, index = index, member = member, call = call
+    ),
+    ZNP_BUILD_INVALID = znp_invalid_error(
+      offset, sprintf("element %s is not valid in its encoding",
+                      format(index, scientific = FALSE)),
+      index = index, member = member, call = call
     ),
     ZNP_BUILD_NOT_YET = znp_unsupported_type(
       descr, sprintf("dtype '%s' is not supported yet", descr),

@@ -10,8 +10,24 @@
 #' Every value is converted exactly or refused: an `i4` of `-2^31` is R's
 #' `NA_integer_`, so it is an error unless `na = "allow"`, and a 64-bit
 #' integer beyond `2^53` in magnitude, which a double cannot hold exactly,
-#' is an error unless `int64 = "integer64"`. String, date-time, void and
-#' structured dtypes are not supported yet.
+#' is an error unless `int64 = "integer64"`. Structured dtypes are not
+#' supported yet.
+#'
+#' Strings: `S<n>` (bytes) and `U<n>` (code points) become character
+#' vectors in UTF-8, with the trailing NULs NumPy pads with removed. `S<n>`
+#' bytes are decoded as `encoding` says, and `strings = "raw"` returns each
+#' as a raw vector instead. A NUL inside a value cannot live in an R string
+#' and is an error. `V<n>` becomes a list of raw vectors.
+#'
+#' Dates and times: `M8[D]` becomes `Date`; `M8[s]`, `M8[ms]`, `M8[us]` and
+#' `M8[ns]` become `POSIXct` in UTC; `m8` becomes `difftime` in days,
+#' hours, minutes, weeks or seconds (`ms`, `us` and `ns` scaled to
+#' seconds). NaT is `NA`. A double cannot hold every nanosecond since 1970,
+#' so `M8[ns]` is the nearest double; `datetime = "integer64"` keeps the
+#' counts exactly. Units with no R class (`Y`, `M` and finer than `ns`) are
+#' returned as `integer64` counts either way. Such an `integer64` carries
+#' the dtype in its `npy_dtype` attribute, and [npy_encode()] writes it back
+#' as that dtype.
 #'
 #' A 0-d array becomes a length-1 vector and a 1-d array a vector, both
 #' without `dim`. NumPy's default C order (last index fastest) is permuted
@@ -26,6 +42,11 @@
 #'   useful) for `i8` and `u8`.
 #' @param na `"error"` or `"allow"`: whether a value that is `NA` in R is
 #'   refused.
+#' @param strings `"character"` or `"raw"`, for `S<n>`.
+#' @param encoding The encoding of `S<n>` bytes: `"UTF-8"` (validated),
+#'   `"latin1"` (converted to UTF-8) or `"bytes"` (left as bytes).
+#' @param datetime `"convert"` to `Date`, `POSIXct` and `difftime`, or
+#'   `"integer64"` for the counts as they are.
 #' @param max_size The largest input accepted, in bytes.
 #' @param max_header The largest header accepted, in bytes; NumPy's own
 #'   default.
@@ -45,27 +66,64 @@
 #' npy_decode(x)
 npy_decode <- function(x, order = c("R", "file"),
                        int64 = c("double", "integer64"),
-                       na = c("error", "allow"), max_size = 2 * 1024^3,
-                       max_header = 10000, max_dims = 32) {
+                       na = c("error", "allow"),
+                       strings = c("character", "raw"),
+                       encoding = c("UTF-8", "latin1", "bytes"),
+                       datetime = c("convert", "integer64"),
+                       max_size = 2 * 1024^3, max_header = 10000,
+                       max_dims = 32) {
   call <- sys.call()
   znp_check_raw(x, call = call)
   order <- znp_match(order, c("R", "file"), "order", call)
   int64 <- znp_match(int64, c("double", "integer64"), "int64", call)
   na <- znp_match(na, c("error", "allow"), "na", call)
+  strings <- znp_match(strings, c("character", "raw"), "strings", call)
+  encoding <- znp_match(encoding, c("UTF-8", "latin1", "bytes"), "encoding",
+                        call)
+  datetime <- znp_match(datetime, c("convert", "integer64"), "datetime", call)
   limits <- znp_limits(max_size, max_header, max_dims, 1024, call = call)
-  opts <- c(order == "file", int64 == "integer64", na == "allow")
+  opts <- c(order == "file", int64 == "integer64", na == "allow",
+            strings == "raw", match(encoding, c("UTF-8", "latin1", "bytes")) - 1,
+            datetime == "integer64")
   res <- .Call(zunpy_decode, x, limits, as.integer(opts))
   if (res$status != "ZNP_OK") {
     znp_raise_status(res$status, res$offset, x, limits, index = res$index,
                      descr = res$descr, call = call)
   }
   znp_header_warnings(res, call)
-  value <- res$value
-  if (int64 == "integer64" && is.double(value) &&
-      res$descr %in% c("<i8", ">i8", "<u8", ">u8")) {
+  znp_classify(res$value, res$descr, int64, datetime)
+}
+
+# The R class a dtype reads as (design section 6.1, D7). value is the bare
+# vector the build phase made.
+znp_classify <- function(value, descr, int64, datetime) {
+  kind <- substr(descr, 2, 2)
+  if (kind %in% c("i", "u") && substring(descr, 3) == "8" &&
+      int64 == "integer64") {
     class(value) <- "integer64"
+    return(value)
   }
-  value
+  if (!kind %in% c("M", "m")) {
+    return(value)
+  }
+  unit <- sub("^.*\\[(.*)\\]$", "\\1", descr)
+  scaled <- datetime == "convert" &&
+    (unit %in% c("D", "s", "ms", "us", "ns") ||
+       kind == "m" && unit %in% c("m", "h", "W"))
+  if (!scaled) {
+    attr(value, "npy_dtype") <- descr
+    class(value) <- "integer64"
+    return(value)
+  }
+  if (kind == "M" && unit == "D") {
+    return(structure(value, class = "Date"))
+  }
+  if (kind == "M") {
+    return(structure(value, class = c("POSIXct", "POSIXt"), tzone = "UTC"))
+  }
+  units <- switch(unit, D = "days", h = "hours", m = "mins", W = "weeks",
+                  "secs")
+  structure(value, class = "difftime", units = units)
 }
 
 #' Read the header of a NumPy array

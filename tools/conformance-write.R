@@ -7,7 +7,21 @@ library(zunpy)
 out <- commandArgs(TRUE)[1]
 dir.create(out, showWarnings = FALSE, recursive = TRUE)
 
-show <- function(v) {
+hex <- function(r) paste(sprintf("%02x", as.integer(r)), collapse = "")
+
+show <- function(v, descr = "") {
+  kind <- substr(descr, 2, 2)
+  if (kind == "U") {
+    return(vapply(enc2utf8(v), function(s) paste0("s:", hex(charToRaw(s))), "",
+                  USE.NAMES = FALSE))
+  }
+  if (kind == "S") {
+    return(vapply(v, function(s) paste0("b:", hex(charToRaw(s))), "",
+                  USE.NAMES = FALSE))
+  }
+  if (kind %in% c("M", "m")) {
+    return(ifelse(is.na(v), "NaT", format(v, scientific = FALSE, trim = TRUE)))
+  }
   if (is.logical(v)) return(ifelse(v, "True", "False"))
   if (is.complex(v)) return(paste0(show(Re(v)), ":", show(Im(v))))
   if (is.integer(v)) return(as.character(v))
@@ -34,9 +48,17 @@ values <- list(
   empty = matrix(numeric(), 0, 3),
   narrow_f4 = c(1 + 2^-30, 3.4e38, 1e-46),
   narrow_f2 = c(65504, 1e-8, 0.1),
-  narrow_u2 = c(0L, 65535L)
+  narrow_u2 = c(0L, 65535L),
+  unicode = matrix(c("", "a", "h\u00e9llo", "\u65e5\u672c", "\U0001F600x", "t q"), 2),
+  bytes = c("abc", "", "h\u00e9"),
+  date = as.Date(c("1970-01-01", "2024-10-08", NA, "1900-03-01")),
+  posix_us = as.POSIXct(c("2024-10-08 12:00:00.123456", NA, "1960-01-01"), tz = "UTC"),
+  posix_ns = as.POSIXct(c("1970-01-01 00:00:01.5", "1969-12-31 23:59:59"), tz = "UTC"),
+  hours = as.difftime(c(1, 25, NA), units = "hours"),
+  millis = as.difftime(c(1.5, -0.001), units = "secs")
 )
-dtypes <- list(narrow_f4 = "<f4", narrow_f2 = "<f2", narrow_u2 = "<u2")
+dtypes <- list(narrow_f4 = "<f4", narrow_f2 = "<f2", narrow_u2 = "<u2",
+               bytes = "|S", posix_ns = "<M8[ns]", millis = "<m8[ms]")
 
 rows <- character()
 for (name in names(values)) {
@@ -49,10 +71,18 @@ for (name in names(values)) {
     # The expected values are what the file holds: R's value, narrowed to
     # the dtype the way npy_decode() reads it back.
     expected <- npy_decode(bytes)
+    if (substr(h$descr, 2, 2) %in% c("M", "m")) {
+      # The counts in the file, as NumPy's int64 view shows them: R's value
+      # times the ticks per R unit, exact for the counts below 2^53 used here.
+      unit <- sub("^.*\\[(.*)\\]$", "\\1", h$descr)
+      scale <- c(ms = 1e3, us = 1e6, ns = 1e9)[unit]
+      if (is.na(scale)) scale <- 1
+      expected <- round(as.numeric(expected) * scale)
+    }
     rows <- c(rows, paste(
       file, h$descr, paste(h$shape, collapse = ","),
       if (h$fortran_order) "F" else "C", "R", "-",
-      paste(show(c_order(expected)), collapse = " "), sep = "\t"
+      paste(show(c_order(expected), h$descr), collapse = " "), sep = "\t"
     ))
   }
 }

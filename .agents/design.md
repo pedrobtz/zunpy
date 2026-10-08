@@ -312,7 +312,7 @@ warning, since the writer's byte order is unknowable).
 | `U<n>` | `character` |
 | `M8[D]` | `Date` |
 | `M8[s]`, `M8[ms]`, `M8[us]`, `M8[ns]` | `POSIXct`, UTC |
-| `M8[<other>]` | `integer64` with a `unit` attribute |
+| `M8[<other>]` | `integer64` with an `npy_dtype` attribute |
 | `m8[<unit>]` | `difftime` |
 | `V<n>` | `list` of `raw` |
 | `O` | `zunpy_unsupported_type` |
@@ -331,16 +331,33 @@ Notes, by row:
 - `f4`, `f8`: exactly, every NaN payload kept, so an `NA_real_` written by
   `npy_write()` reads back as `NA`.
 - `S<n>`: NUL-padded bytes; trailing NULs are stripped; decoded from
-  `encoding` and validated as UTF-8. `strings = "raw"` returns the bytes.
+  `encoding` and validated as UTF-8. `strings = "raw"` returns the bytes,
+  trailing NULs stripped as NumPy strips them. *Settled at Stage 4:*
+  `encoding` is `"UTF-8"` (validated; invalid bytes are
+  `zunpy_invalid_error`), `"latin1"` (converted to UTF-8) or `"bytes"`
+  (marked as bytes), the three zubin's `bin_unpack()` knows; a NUL inside
+  a value cannot live in an R string and is `zunpy_unrepresentable`
+  unless `strings = "raw"`.
 - `U<n>`: UCS-4 code points in the file's byte order, NUL-padded,
   converted to UTF-8. A surrogate or a code point above U+10FFFF is
   `zunpy_invalid_error`.
 - `M8[ns]`: a double loses precision beyond 2^53 ns, about 104 days from
   the epoch; `datetime = "integer64"` keeps the raw count.
 - `M8[<other>]`: the units `Y`, `M`, `W`, `h`, `m`, `ps`, `fs` and `as`
-  fit no R class.
+  fit no R class. The `integer64` carries the dtype in an `npy_dtype`
+  attribute (*settled at Stage 4*, in place of a `unit` attribute), and
+  `npy_write()` writes such a vector back as that dtype.
 - `m8[<unit>]`: `D` gives days and `s` seconds; `ms`, `us` and `ns` are
-  scaled to seconds; other units are returned as for `M8`.
+  scaled to seconds; `m`, `h` and `W` give minutes, hours and weeks,
+  which `difftime` has (*settled at Stage 4*); other units are returned as
+  for `M8`.
+- *Counts to doubles (settled at Stage 4).* A count up to 2^53 is exact
+  as a double, so one division by the ticks per unit rounds correctly;
+  beyond, the whole units are split off first and only the fraction is
+  rounded, which gives the nearest double where a plain division would
+  not (`2024-10-08T12:00:00.123456789` in `ns` is the double nearest the
+  instant). A count in a whole unit (`D`, `s`, `m`, `h`, `W`) beyond 2^53
+  would not be exact and is `zunpy_unrepresentable`.
 - NaT (not-a-time) is `INT64_MIN` and becomes `NA` of the target class.
 - `O` is a pickled object; `g`, `f16` and `c32` are long double.
 
@@ -428,7 +445,7 @@ Vectors and 0-d arrays have no order question.
 | `double` | `<f8` |
 | `complex` | `<c16` |
 | `raw` | `\|u1` |
-| `character` | `<U<n>`, or `\|S<n>` with `encoding = "bytes"` |
+| `character` | `<U<n>`, or `\|S<n>` with `dtype = "\|S"` |
 | `factor` | its labels, as `character` |
 | `integer64` (bit64) | `<i8` |
 | `Date` | `<M8[D]` |
@@ -450,11 +467,25 @@ Notes, by row:
 - `raw`: a `raw` vector is bytes, never a string. It reads back as
   `integer`, since `|u1` is an integer dtype (a documented loss).
 - `character`: n is the longest string, in code points for `U` and in
-  bytes for `S`. `NA_character_` is an empty string with `na = "allow"`,
-  else an error.
+  bytes for `S`, and at least 1, as NumPy makes it; `dtype = "<U<n>"` or
+  `"|S<n>"` fixes it, and a longer value is `zunpy_range_error` (§18 Q2,
+  decided at Stage 4). `S` takes the UTF-8 bytes, or Latin-1 with
+  `encoding = "latin1"` (a character with no Latin-1 form is
+  `zunpy_range_error`), or the bytes as they are with `"bytes"`.
+  `NA_character_` is an empty string with `na = "allow"`, else an error.
 - `factor`: levels are lost, as in `zucbor`.
-- `POSIXct`: a fraction finer than `unit` is an error, never rounded;
-  choose `unit = "ns"` or round first.
+- `POSIXct`: written when its count in `unit` reads back as the same
+  double, and refused (`zunpy_range_error`) when it holds a finer
+  fraction; choose `unit = "ns"` or round first. "Reads back" is the rule
+  of §6.1, so whatever `npy_read()` returns is written back; a microsecond
+  `POSIXct`, whose double is not exactly that many microseconds, still
+  writes as `M8[us]` (*settled at Stage 4*: "no fraction finer than the
+  unit" alone would refuse most times). `Date` and `difftime` take whole
+  units the same way; a `Date` stored as integer is days too. `NA` is
+  NaT.
+- `difftime`: `m8` in its own units (`secs` `s`, `mins` `m`, `hours` `h`,
+  `days` `D`, `weeks` `W`), or with `dtype` in `s`, `ms`, `us` or `ns`
+  from its value in seconds.
 - matrix, array: `dimnames` are dropped (a documented loss).
 - `data.frame`: columns by §7.3.
 - named `list`: each element by this table; `npy_encode()` refuses it.
@@ -952,11 +983,8 @@ Reasons where they are not in the section cited:
 1. **`=` byte order.** NumPy never writes it; some writers do. Accept as
    little-endian with a warning, or refuse? Recommended: accept with a
    warning, since the alternative is a file nobody can read.
-2. **`U<n>` on write: n in code points of the longest string**, which can
-   make a column of one long string and a million short ones very large.
-   An `nchar =` override, or `|S<n>` by default for ASCII-only columns?
-   Recommended: the override, with the default as stated; silently
-   changing dtype by content is what §7.2 avoids.
+2. *Decided at Stage 4:* the override is `dtype = "<U<n>"` (or `"|S<n>"`),
+   with the default as stated; §7.1 says how.
 3. **`.npz` member names.** NumPy allows any string; ZIP names are bytes.
    Refuse names with `/`, `\`, NUL or a leading `..`? Recommended: yes,
    since a reader elsewhere may extract to disk.

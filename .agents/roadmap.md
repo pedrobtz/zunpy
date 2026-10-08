@@ -222,7 +222,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 ## Stage 4 — Strings, dates and times · S
 
-**Status:** not started.
+**Status:** done 2026-10-08 ([#7](https://github.com/pedrobtz/zunpy/issues/7)).
 
 **Goal:** `S<n>`, `U<n>`, `M8` and `m8` both ways, with every lossy row of §7.4 behaving as documented.
 
@@ -237,6 +237,18 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 - §6.1's string and time rows read from fixtures and agree with NumPy; §7.1's `character`, `factor`, `Date`, `POSIXct` and `difftime` rows write and agree.
 - The lossy table of §7.4 is verified row by row.
+
+**What actually happened**
+
+- 30 more fixtures: `U5` in both byte orders and memory orders, `S4`, `V3`, every `M8`/`m8` unit with an R class and three without, NaT, a big-endian `M8[ns]`, and edges (a NUL inside `S`, a surrogate in `U`, Latin-1 bytes, a day count beyond 2^53). They are named `dt-*` and `td-*` in lower case: `M8-M.npy` (months) and `m8-m.npy` (minutes) are one file on a case-insensitive file system, which the conformance script caught.
+- The MANIFEST records strings as hex (`s:` UTF-8, `b:` bytes) and times as counts; the generator once viewed big-endian counts as little-endian and wrote `NaT` through the string formatter, both caught by `tools/check-fixtures` before a test used them.
+- Counts become doubles by one correctly rounded division up to 2^53 and by splitting off whole units beyond (design §6.1). Writing accepts a value when its count reads back as the same double, so every value read is written back; a finer fraction is refused (design §7.1).
+- `m8[m]`, `m8[h]` and `m8[W]` read as `difftime` in minutes, hours and weeks; units with no R class read as `integer64` carrying `npy_dtype`, which `npy_encode()` writes back. The `unit` attribute of the RFC became `npy_dtype`.
+- §18 Q2 is decided: `dtype = "<U<n>"` or `"|S<n>"` fixes the width; the default is the widest value, at least 1 as in NumPy.
+- A `Date` stored as integer was handed to C as doubles; caught by the generated round trip and fixed.
+- Text elements are R pointers, so a C-order permutation of strings and lists moves them through an index permutation with `SET_STRING_ELT`/`SET_VECTOR_ELT`, never `memcpy`.
+- `conformance-write.R` now writes strings, bytes, dates and times too: 34 files, all read back by `np.load()`.
+- `V<n>` reads as a list of raw; writing a list of raw is not in §7.1 and was not added.
 
 ---
 
