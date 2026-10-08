@@ -13,7 +13,7 @@ Sibling checkouts are in `../`. `zucbor` is the model for the check-then-build s
 
 ## Current state
 
-**2026-10-08: Stage 0 done.** The package checks 0/0/0 against zubin and zufast from `Remotes:`. What exists: the condition hierarchy (`R/conditions.R`, design §11), `zunpy_info()` with a self-test that calls into each provider header, `src/init.c` with an empty-but-one `.Call` table, hidden symbols proved by `tools/check-symbols` and the test in `test-info.R`. Nothing in design §5 beyond `zunpy_info()` is implemented. zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
+**2026-10-08: Stages 0 and 1 done.** The check phase exists: `src/znp_header.c` parses and validates a whole `.npy` header (design §9) R-free, and `znp_header_check()` (internal, `R/header.R`) returns its plan or raises the classed condition. Gates: `tools/run-lint`, `tools/check-symbols`, `tools/run-mutation-check` (17 guards) and `tools/run-fuzz` with its canary, all in `hardening.yaml`. No R value is built from a plan yet, and no function of design §5 but `zunpy_info()` is exported. zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
 
 Update this paragraph at the end of every stage.
 
@@ -52,14 +52,15 @@ air format .                                     # format R sources
 
 The providers are not on CRAN: install them from the sibling checkouts (`R CMD INSTALL ../zufast ../zubin ../zukomp`) or with `pak::pak("pedrobtz/<pkg>")`. roxygen2 must be 8.1.0 or newer.
 
-Gate scripts; each arrives at the roadmap stage named:
+Gate scripts; those of Stages 0 and 1 exist, the rest arrive at the stage named. The check-phase gates find zufast's headers through `tools/zufast-include` (`$ZUFAST_INC`, else the installed package):
 
 ```sh
 tools/run-fuzz [secs]          # Stage 1: canary first, then fuzz_header under ASan+UBSan;
                                # macOS: FUZZ_CC=/opt/homebrew/opt/llvm/bin/clang
 tools/run-lint                 # Stage 1: -Wall -Wextra -Wpedantic -Wshadow -Werror on project C
 tools/check-symbols <so>       # Stage 0: only R_init_zunpy exported; no stdio/abort/exit
-tools/run-mutation-check       # Stage 1: every /* GUARD: */ seen to be load-bearing
+tools/run-mutation-check       # Stage 1: every /* GUARD: */ seen to be load-bearing (cases: tools/mutation-cases.R)
+Rscript tools/fuzz-seeds.R     # Stage 1: regenerate fuzz/seeds (commit the result)
 python3 tools/make-fixtures.py # Stage 2: regenerate NumPy fixtures (NumPy version pinned in the script)
 tools/check-fixtures           # Stage 2: regenerate and diff against the committed fixtures (CI)
 tools/run-benchmarks           # Stage 7: against readBin(), RcppCNPy, reticulate; not a CI gate
@@ -67,7 +68,7 @@ tools/run-benchmarks           # Stage 7: against readBin(), RcppCNPy, reticulat
 
 ## Architecture
 
-Planned layout, from design §4, §10 and §13. Today `src/` holds `init.c`, `znp_r.h` and `znp_info.c` only.
+Planned layout, from design §4, §10 and §13. Today `src/` holds `init.c`, `znp_r.h`, `znp_info.c`, `znp_check.h`, `znp_header.c` and `znp_r_header.c`.
 
 ```text
 R/            decode.R, encode.R, read.R, npz.R, structured.R, dtype.R,
@@ -78,11 +79,12 @@ src/          init.c          registration only
               znp_info.c      zunpy_info(): provider versions and the LinkingTo self-test
               znp_check.h     the check phase's R-free interface and the plan struct
               znp_header.c    prefix, dict grammar, descr grammar, size check, limits
+              znp_r_header.c  .Call glue: the plan as an R list, statuses by name
               znp_build.c     plan -> R value through zubin's rw.h; C-order permutation
               znp_write.c     header formatting; data into a zubin builder
               znp_zip.c       .npz records, CRC-32
               Makevars        hand-listed OBJECTS, $(C_VISIBILITY)
-fuzz/         fuzz_header.c, fuzz_canary.c (not in the tarball)
+fuzz/         fuzz_header.c (-DZNP_FUZZ_CANARY builds the canary), probe.c, npy.dict, seeds/ (not in the tarball)
 tools/        make-fixtures.py and the gate scripts above
 tests/testthat/fixtures/npy/   NumPy-written files and MANIFEST.tsv
 .agents/      design.md, roadmap.md
@@ -94,6 +96,8 @@ Reading is two phases, as in zucbor. Bytes (from `npy_decode()`, or `npy_read()`
 
 - **Nothing is allocated from a header field.** The build phase allocates only from the plan, whose sizes the check phase has compared with the input length. A header claiming `(2**40, 2**40)` must cost nothing (design §12).
 - **The header parser is a grammar, never an evaluator.** No identifiers, no arithmetic; recursion capped at depth 8. A valid Python expression outside design §9.2 is a parse error (D12).
+- **The check phase never allocates.** It runs in two calls so the caller sizes the scratch from a header length already bounded by `max_header` and the bytes present; anything new the parser stores goes in that scratch, sized in `scratch_layout()`.
+- **A guard's `if` is one line.** `tools/run-mutation-check` mutates it with `sed`; a condition split across lines cannot be mutated and fails the check. Each guard needs a case in `tools/mutation-cases.R`.
 - **The check phase contains no R.** `znp_header.c` never includes `R.h`; the fuzz build (`-DZNP_STANDALONE`) compiles it standalone.
 - **Guards carry `/* GUARD: name */`** on their `if` lines and a `test_that("GUARD name")` each; `tools/run-mutation-check` proves each one is load-bearing. A new guard without its test does not count.
 - **Byte order comes from the header, never from the host.** Every read goes through zubin's `le`/`be` kernels; the `memcpy` fast path exists only behind `zb_host_big_endian()` (Stage 7). The `-DZNP_FORCE_BE_HOST` build is how this is tested on a little-endian machine.

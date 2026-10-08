@@ -1,0 +1,79 @@
+# Roadmap Stage 1: the gates that keep the check phase honest. Each was seen
+# to fail on a planted defect before it was trusted.
+#
+#   gates     project C warning-free under strict flags (tools/run-lint);
+#             the installed shared object exports only R_init_zunpy and no
+#             console or exit symbols (tools/check-symbols); every guard in
+#             src/znp_header.c is load-bearing (tools/run-mutation-check)
+#   canary    fuzz_header built to trap on any accepted header must crash
+#   fuzz      libFuzzer over the R-free check phase, from fuzz/seeds and a
+#             corpus cached between runs: 5 minutes per push, an hour
+#             nightly
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+name: hardening
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    name: lint, symbols, mutation
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      # zubin and zufast come from Remotes: (LinkingTo).
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+      - run: tools/run-lint
+      - name: Install and check symbols
+        run: |
+          R CMD INSTALL --library="$RUNNER_TEMP" .
+          CHECK_PLANT=1 tools/check-symbols "$RUNNER_TEMP/zunpy/libs/zunpy.so"
+      - run: tools/run-mutation-check
+
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+        with:
+          repository: pedrobtz/zufast
+          path: .github-packages/zufast
+      - name: Install clang with libFuzzer
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q clang
+          v=$(clang -dumpversion | cut -d. -f1)
+          sudo apt-get install -y -q "libclang-rt-$v-dev" || true
+      - name: The canary crashes
+        env:
+          ZUFAST_INC: .github-packages/zufast/inst/include
+        run: CANARY_ONLY=1 tools/run-fuzz
+
+  fuzz:
+    uses: pedrobtz/r-actions/.github/workflows/fuzz.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+    with:
+      harness: fuzz/fuzz_header.c
+      sources: src/znp_header.c
+      github-packages: pedrobtz/zufast
+      cflags: -g -O1 -fno-omit-frame-pointer -fno-sanitize-recover=undefined -UNDEBUG -DZNP_STANDALONE -Isrc -I.github-packages/zufast/inst/include
+      seed-corpus: fuzz/seeds
+      dictionary: fuzz/npy.dict
+      libfuzzer-args: -max_len=65536
+      max-total-time: ${{ github.event_name == 'schedule' && 3600 || 300 }}

@@ -113,7 +113,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 ## Stage 1 — The header parser, R-free · M
 
-**Status:** not started.
+**Status:** done 2026-10-08 ([#4](https://github.com/pedrobtz/zunpy/issues/4)).
 
 **Goal:** a byte string is either a verified plan (dtype, itemsize, shape, order, data offset) or a status with an offset, and nothing hostile gets through.
 
@@ -134,6 +134,17 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 - `znp_header.c` compiles standalone, without `R.h`.
 
 **Not this stage:** allocating any R value from a plan.
+
+**What actually happened**
+
+- The check runs in two calls, `znp_check_prefix()` then `znp_check()`, so the caller allocates a scratch whose size the prefix has already bounded; the parser builds a small literal tree in it and then interprets the tree (design §13).
+- Grammar details the RFC left open are settled in design §9.2 and §9.3: `(x)` is not a tuple, no leading zeros, `None` for `titles`, NUL and surrogates refused, `\r` and `\U` escapes, any trailing whitespace, a missing byte order read as `=`, `M8` without a unit or with a multiplier refused, long doubles and `O` at any width unsupported.
+- Checked against NumPy 2.3.3 (through `uv`, not committed): it writes structured dtypes in the list form with `('', '|V<n>')` padding entries, never the dict form, and `S0` arrays as `S1`. Both forms are parsed.
+- One guard design §12 missed: a zero-width dtype (`S0`, `V0`, an empty record) has no bytes to compare, so its element count is bounded by `max_size` (GUARD `zero-width`).
+- Truncated and trailing data are `zunpy_parse_error`, as §12 says; §11's "shape times itemsize disagrees" now names layout faults only.
+- The mutation check found two guards that were not load-bearing: separate field-count checks in the list and dict forms were shadowed by the one in `add_field()`, and a multi-line guard could not be mutated. They became one `fields` guard and a single-line `duplicate-field` guard. 17 guards, each with a case in `tools/mutation-cases.R` and a `test_that("GUARD ...")`.
+- The fuzzer ran 15.6 million inputs in two minutes locally with no finding; the canary is the same harness built to trap on any accepted header.
+- `npy_header()` waits for Stage 2 as planned; the internal `znp_header_check()` is what the tests call.
 
 ---
 

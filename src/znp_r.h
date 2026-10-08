@@ -6,5 +6,6 @@
 
 /* .Call entry points, registered in init.c. */
 SEXP zunpy_build_info(void);
+SEXP zunpy_header_check(SEXP x, SEXP limits);
 
 #endif /* ZNP_R_H */

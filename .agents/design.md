@@ -564,29 +564,55 @@ A Python literal, restricted to what NumPy's writer emits and its reader
 accepts through `ast.literal_eval`:
 
 ```text
-header   := "{" ws pair { "," ws pair } [ "," ] ws "}" ws "\n" { " " }
-pair     := string ws ":" ws value
-value    := string | bool | tuple | list | int | dict
+header   := dict ws
+value    := string | bool | none | int | tuple | list | dict
+            | "(" ws value ws ")"
 string   := "'" chars "'" | '"' chars '"'
-            with \' \" \\ \n \t \xHH \uHHHH escapes
+            with \' \" \\ \n \t \r \xHH \uHHHH \UHHHHHHHH escapes
 bool     := "True" | "False"
-tuple    := "(" ws [ value { "," ws value } [ "," ] ] ws ")"
-list     := "[" ws [ value { "," ws value } [ "," ] ] ws "]"
-int      := [ "-" ] digit { digit }
-dict     := "{" ws [ pair { "," ws pair } [ "," ] ] ws "}"
+none     := "None"
+int      := [ "-" ] ( "0" | nonzero { digit } )
+tuple    := "(" ws ")" | "(" ws value ws "," ws ")"
+          | "(" ws value { ws "," ws value } [ ws "," ] ws ")"   (two or more)
+list     := "[" ws [ value { ws "," ws value } [ ws "," ] ] ws "]"
+dict     := "{" ws [ pair { ws "," ws pair } [ ws "," ] ] ws "}"
+pair     := value ws ":" ws value
 ws       := { " " | "\t" | "\n" | "\r" }
 ```
+
+*Settled at Stage 1.* The header must start with `{` and may end in any
+whitespace; NumPy's spaces and final newline are whitespace, so the
+newline is not required. `(x)` is `x` in parentheses, as in Python, so a
+shape of `(3)` is an int and refused; a one-element tuple needs its comma.
+An int with a leading zero is refused, as Python refuses it. A string may
+not hold NUL, written or escaped, because R's strings cannot; a surrogate
+code point is refused too. In versions 1 and 2 each byte of a string is
+its Latin-1 code point; in version 3 the whole header must be valid UTF-8.
+`None` exists for the `titles` of the dict form.
 
 Required: `descr` (a string, or a list of field tuples, or the dict form
 with `names`, `formats`, `offsets`, `itemsize`), `fortran_order` (a bool),
 `shape` (a tuple of non-negative ints). Any other key, a missing key, a
-duplicate key or a wrong type is `zunpy_parse_error` with the byte offset.
-The grammar is a recursive descent with an explicit depth cap of 8, which
-is more than any `descr` needs and makes the parser's stack use fixed.
+duplicate key, a key that is not a string or a wrong type is
+`zunpy_parse_error` with the byte offset. The grammar is a recursive
+descent with an explicit depth cap of 8, which is more than any `descr`
+needs and makes the parser's stack use fixed.
 
 Field tuples: `(name, descr)` or `(name, descr, shape)`, where `name` is a
 string or a `(title, name)` pair, `descr` is a string or a nested list
-(refused in 0.1.0), and `shape` is a tuple of ints.
+(refused in 0.1.0), and `shape` is a tuple of ints or one int. A subarray
+field has at most 8 dimensions; more is `zunpy_unsupported_type`.
+`('', '|V<n>')` is padding: NumPy writes it for aligned and offset dtypes
+(*verified 2026-10-08* against NumPy 2.3.3, which writes the list form
+with padding entries and never the dict form). Any other field with an
+empty name is named `f<i>`, its 0-based position in the list, as NumPy
+names it. Field names must be unique (`zunpy_invalid_error`).
+
+The dict form takes `names` and `formats` (required), `offsets`,
+`itemsize`, `titles` (strings or `None`) and `aligned` (a bool, ignored).
+Without `offsets` the fields are packed; without `itemsize` the record
+ends at its furthest field. A field that overlaps another or runs past the
+itemsize is `zunpy_invalid_error`.
 
 ### 9.3 The `descr` string grammar
 
@@ -608,6 +634,13 @@ and `V0` are legal (NumPy writes them for empty strings) and read as
 empty values. A `|` order on a multi-byte kind, or `<` and `>` on a
 one-byte kind, is refused: NumPy never writes it and it is the first
 thing a fuzzer finds.
+
+*Settled at Stage 1.* A missing byte order is read as `=`: little-endian
+for a multi-byte kind, with the warning of §18 Q1, and `|` for a
+one-byte kind. `O` (any width), `g`, `G`, `f12`, `f16`, `c24` and `c32`
+are `zunpy_unsupported_type`; every other unknown kind or width is
+`zunpy_parse_error`. `M8` and `m8` need a unit and take no multiplier
+(`M8[10s]` is refused).
 
 ## 10. `.npz`
 
@@ -687,8 +720,10 @@ Fields and detail:
 - `zunpy_invalid_argument` carries `arg`; it includes a `dtype` the value
   cannot reach.
 - `zunpy_parse_error` and `zunpy_invalid_error` carry `offset`, the
-  0-based byte offset in the input. Inconsistent means: shape times
-  itemsize disagrees with the data length, offsets overlap, a `U` string
+  0-based byte offset in the input. Too few bytes for the declared shape
+  and bytes after it are both `zunpy_parse_error`, as §12 says (truncated
+  or trailing data, not an inconsistency). Inconsistent means: record
+  fields overlap, run past the itemsize or share a name, a `U` string
   holds a surrogate, or a CRC mismatches.
 - `zunpy_unsupported_type` carries `dtype`: object, long double, nested
   structured dtypes, pickled members.
@@ -731,6 +766,12 @@ exceeds the bytes present is `zunpy_parse_error` (truncation); bytes
 beyond the declared size are `zunpy_parse_error` too, since NumPy's own
 reader rejects trailing data.
 
+**Zero-width types are bounded too** (*settled at Stage 1*). `S0`, `V0`
+and an empty record declare elements with no bytes behind them, so the
+byte comparison cannot bound them, yet the build phase makes one R value
+per element. For a zero itemsize the element count must not exceed
+`max_size`.
+
 **Nothing is allocated from a header field.** The plan the check phase
 hands to the build phase carries sizes the check phase has verified
 against the input length, and the build phase allocates from the plan
@@ -750,8 +791,13 @@ that is a valid Python expression but not in §9.2 is a parse error.
   as `cbor_read()` does; the whole file is in one raw vector before the
   check phase runs. Lazy reading comes in zunpy 0.2.0, on zubin 0.3.0
   views and zubin 0.4.0 memory maps (*verified 2026-10-08*).
-- The check phase allocates nothing on the R heap; its scratch (the field
-  table, at most `max_fields` entries) is `R_alloc()`ed.
+- The check phase allocates nothing itself. It runs in two calls: the
+  first reads the prefix and bounds the header length by `max_header`
+  and by the bytes present, and returns the scratch size; the caller
+  `R_alloc()`s it (the fuzzer `malloc()`s it) and the second call parses
+  into it. The scratch holds at most one 32-byte node per header byte,
+  the field table (at most `max_fields` entries) and the decoded strings:
+  about 550 KB at the default limits, and linear in `max_header`.
 - The build phase allocates the result once, from the plan, and converts
   in place. A C-order permutation needs one temporary of the same size.
 - The writer's buffer is a `zubin` builder owned by a finalized external
