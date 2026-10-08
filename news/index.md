@@ -2,6 +2,9 @@
 
 ## zunpy 0.0.0.9000
 
+- Structured dtypes (record arrays) read as data frames, one column per
+  field or subarray element, and data frames write as record arrays;
+  `dtype` can name the dtype of some columns.
 - Strings, dates and times, both ways: `S<n>` and `U<n>` read as UTF-8
   character vectors (`strings = "raw"` and `encoding` for `S<n>`) and
   are written from character vectors and factors; `V<n>` reads as a list

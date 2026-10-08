@@ -61,13 +61,14 @@ for the same array.</p>
 
 <dl><dt id="arg-x">x<a class="anchor" aria-label="anchor" href="#arg-x"></a></dt>
 <dd><p>A logical, integer, double, complex, raw or character vector,
-matrix or array, a factor, a <code>Date</code>, <code>POSIXct</code> or <code>difftime</code> vector, or
-a <code><a href="https://bit64.r-lib.org/reference/bit64-package.html" class="external-link">bit64::integer64</a></code> vector.</p></dd>
+matrix or array, a factor, a <code>Date</code>, <code>POSIXct</code> or <code>difftime</code> vector, a
+<code><a href="https://bit64.r-lib.org/reference/bit64-package.html" class="external-link">bit64::integer64</a></code> vector, or a data frame of such columns.</p></dd>
 
 
 <dt id="arg-dtype">dtype<a class="anchor" aria-label="anchor" href="#arg-dtype"></a></dt>
-<dd><p><code>NULL</code> for the default of the R type, or a NumPy dtype
-string: <code>"|b1"</code>, <code>"|i1"</code>, <code>"&lt;i2"</code>, <code>"&lt;i4"</code>, <code>"&lt;i8"</code>, <code>"|u1"</code>, <code>"&lt;u2"</code>,
+<dd><p><code>NULL</code> for the default of the R type; for a data frame, a
+named character vector of dtypes for some of its columns; else a NumPy
+dtype string: <code>"|b1"</code>, <code>"|i1"</code>, <code>"&lt;i2"</code>, <code>"&lt;i4"</code>, <code>"&lt;i8"</code>, <code>"|u1"</code>, <code>"&lt;u2"</code>,
 <code>"&lt;u4"</code>, <code>"&lt;u8"</code>, <code>"&lt;f2"</code>, <code>"&lt;f4"</code>, <code>"&lt;f8"</code>, <code>"&lt;c8"</code>, <code>"&lt;c16"</code>,
 <code>"&lt;U&lt;n&gt;"</code>, <code>"|S&lt;n&gt;"</code>, <code>"&lt;M8[&lt;unit&gt;]"</code> or <code>"&lt;m8[&lt;unit&gt;]"</code>.</p></dd>
 
@@ -120,6 +121,13 @@ an error unless <code>na = "allow"</code>, which writes <code>-2147483648</code>
 bit for bit into <code>&lt;f8</code>, so R reads it back as <code>NA</code> and NumPy sees a NaN.
 A character <code>NA</code> is an error unless <code>na = "allow"</code>, which writes an
 empty string. A date-time <code>NA</code> is NaT.</p>
+<p>A data frame is written as a structured array (a NumPy record array):
+one field per column, named as the column and typed as the column would
+be on its own, packed in column order, one record per row. <code>dtype</code> may
+then be a named character vector giving the dtype of some columns. Row
+names are dropped. A data frame that <code><a href="npy_decode.html">npy_decode()</a></code> made from an array of
+records with other than one dimension carries <code>npy_shape</code>, and is written
+back with that shape. Field names must be non-empty and unique.</p>
 <p>A matrix or array is written in R's own (Fortran) order with
 <code>fortran_order</code> set, which costs no copy; <code>order = "C"</code> writes C order
 for readers that need it. <code>dimnames</code> and names are dropped. A length-1

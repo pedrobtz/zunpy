@@ -22,14 +22,15 @@ npy_encode(
 - x:
 
   A logical, integer, double, complex, raw or character vector, matrix
-  or array, a factor, a `Date`, `POSIXct` or `difftime` vector, or a
+  or array, a factor, a `Date`, `POSIXct` or `difftime` vector, a
   [`bit64::integer64`](https://bit64.r-lib.org/reference/bit64-package.html)
-  vector.
+  vector, or a data frame of such columns.
 
 - dtype:
 
-  `NULL` for the default of the R type, or a NumPy dtype string:
-  `"|b1"`, `"|i1"`, `"<i2"`, `"<i4"`, `"<i8"`, `"|u1"`, `"<u2"`,
+  `NULL` for the default of the R type; for a data frame, a named
+  character vector of dtypes for some of its columns; else a NumPy dtype
+  string: `"|b1"`, `"|i1"`, `"<i2"`, `"<i4"`, `"<i8"`, `"|u1"`, `"<u2"`,
   `"<u4"`, `"<u8"`, `"<f2"`, `"<f4"`, `"<f8"`, `"<c8"`, `"<c16"`,
   `"<U<n>"`, `"|S<n>"`, `"<M8[<unit>]"` or `"<m8[<unit>]"`.
 
@@ -85,6 +86,16 @@ an error unless `na = "allow"`, which writes `-2147483648` into `<i4`
 written bit for bit into `<f8`, so R reads it back as `NA` and NumPy
 sees a NaN. A character `NA` is an error unless `na = "allow"`, which
 writes an empty string. A date-time `NA` is NaT.
+
+A data frame is written as a structured array (a NumPy record array):
+one field per column, named as the column and typed as the column would
+be on its own, packed in column order, one record per row. `dtype` may
+then be a named character vector giving the dtype of some columns. Row
+names are dropped. A data frame that
+[`npy_decode()`](https://pedrobtz.github.io/zunpy/reference/npy_decode.md)
+made from an array of records with other than one dimension carries
+`npy_shape`, and is written back with that shape. Field names must be
+non-empty and unique.
 
 A matrix or array is written in R's own (Fortran) order with
 `fortran_order` set, which costs no copy; `order = "C"` writes C order
