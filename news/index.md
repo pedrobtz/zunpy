@@ -2,6 +2,9 @@
 
 ## zunpy 0.0.0.9000
 
+- A vignette,
+  [`vignette("zunpy")`](https://pedrobtz.github.io/zunpy/articles/zunpy.md):
+  arrays between R and Python.
 - [`npy_read()`](https://pedrobtz.github.io/zunpy/reference/npy_read.md)
   and
   [`npy_write()`](https://pedrobtz.github.io/zunpy/reference/npy_write.md)

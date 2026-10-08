@@ -31,7 +31,9 @@
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
+<li class="nav-item"><a class="nav-link" href="articles/zunpy.html">Get started</a></li>
 <li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
+<li class="nav-item"><a class="nav-link" href="articles/index.html">Articles</a></li>
 <li class="nav-item"><a class="nav-link" href="news/index.html">Changelog</a></li>
       </ul>
 <ul class="navbar-nav">
@@ -51,11 +53,21 @@
 </h1></div>
 <!-- badges: start -->
 
-<p>The goal of zunpy is to …</p>
+<p>zunpy reads and writes NumPy’s array files, <code>.npy</code> and <code>.npz</code>, to and from R vectors, matrices, arrays, data frames and lists, without Python.</p>
+<ul>
+<li>
+<strong>Every dtype NumPy writes for data</strong>: booleans, integers of every width, half, single and double floats, complex, <code>S</code> and <code>U</code> strings, <code>datetime64</code> and <code>timedelta64</code>, and structured dtypes (record arrays), in either byte order and either memory order. Object arrays and long doubles have no R counterpart and are refused.</li>
+<li>
+<strong>Exact or refused.</strong> A value that does not fit its target is an error naming its index, never a rounding or a wrap: an <code>int64</code> beyond 2^53 needs <code>int64 = "integer64"</code>, and <code>NA</code> goes only where it has a place.</li>
+<li>
+<strong>Safe with untrusted files.</strong> The header is parsed by a grammar, never evaluated, and checked whole against the bytes present before anything is allocated; <code>.npz</code> archives are bounded before any member is inflated. Both parsers are fuzzed.</li>
+<li>
+<strong>Byte-identical to NumPy.</strong> What zunpy writes is what <code>numpy.save()</code> and <code>numpy.savez()</code> write for the same array.</li>
+</ul>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p>You can install the development version of zunpy from <a href="https://github.com/" class="external-link">GitHub</a> with:</p>
+<p>zunpy is not on CRAN yet. Its providers, zubin, zufast and zukomp, are installed from GitHub with it:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("pak")</span></span>
 <span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"pedrobtz/zunpy"</span><span class="op">)</span></span></code></pre></div>
@@ -63,10 +75,32 @@
 <div class="section level2">
 <h2 id="example">Example<a class="anchor" aria-label="anchor" href="#example"></a>
 </h2>
-<p>This is a basic example which shows you how to solve a common problem:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://pedrobtz.github.io/zunpy/">zunpy</a></span><span class="op">)</span></span>
-<span><span class="co">## basic example code</span></span></code></pre></div>
+<span></span>
+<span><span class="va">f</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".npy"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/npy_write.html">npy_write</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1.5</span>, <span class="fl">2</span>, <span class="fl">3</span>, <span class="fl">4</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span>, <span class="va">f</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/npy_read.html">npy_read</a></span><span class="op">(</span><span class="va">f</span><span class="op">)</span></span>
+<span><span class="co">#&gt;      [,1] [,2]</span></span>
+<span><span class="co">#&gt; [1,]  1.5    3</span></span>
+<span><span class="co">#&gt; [2,]  2.0    4</span></span>
+<span></span>
+<span><span class="fu"><a href="reference/npy_header.html">npy_header</a></span><span class="op">(</span><span class="va">f</span><span class="op">)</span><span class="op">$</span><span class="va">descr</span></span>
+<span><span class="co">#&gt; [1] "&lt;f8"</span></span>
+<span></span>
+<span><span class="co"># A named list is a .npz archive; a data frame is a record array.</span></span>
+<span><span class="va">z</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".npz"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/npy_write.html">npy_write</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>x <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">3</span>, df <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>id <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">2</span>, name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"a"</span>, <span class="st">"b"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>, <span class="va">z</span>,</span>
+<span>          compress <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/npy_names.html">npy_names</a></span><span class="op">(</span><span class="va">z</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "x"  "df"</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="fu"><a href="reference/npy_read.html">npy_read</a></span><span class="op">(</span><span class="va">z</span>, names <span class="op">=</span> <span class="st">"df"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; List of 1</span></span>
+<span><span class="co">#&gt;  $ df:'data.frame':  2 obs. of  2 variables:</span></span>
+<span><span class="co">#&gt;   ..$ id  : int [1:2] 1 2</span></span>
+<span><span class="co">#&gt;   ..$ name: chr [1:2] "a" "b"</span></span></code></pre></div>
+<p>In Python, <code>numpy.load()</code> reads both files back.</p>
+<p>See <code><a href="articles/zunpy.html">vignette("zunpy")</a></code> for the type mapping, memory order, archives, limits and what does not round-trip.</p>
 </div>
 </div>
   </main><aside class="col-md-3"><div class="links">
