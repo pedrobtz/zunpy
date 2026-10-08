@@ -215,6 +215,15 @@ test_that("GUARD itemsize: no element larger than max_size, even with none", {
   expect_zunpy_error(znp_header_check(x), "zunpy_limit_error")
 })
 
+test_that("GUARD itemsize holds whatever max_size is", {
+  # Found by the fuzzer with no size limit: fields whose sizes saturate.
+  x <- npy_header_bytes(paste0(
+    "{'descr': [('a', '<U3', (1,)), ('b', '<U4444444444', (3,)), ",
+    "('c', '<U444444444444444444', (3, 4))], 'fortran_order': False, 'shape': (0,), }"
+  ))
+  expect_zunpy_error(znp_header_check(x, max_size = 2^53), "zunpy_size_limit")
+})
+
 test_that("GUARD columns: subarray elements count against max_fields", {
   d <- "{'descr': [('a', '|u1', (3,)), ('b', '|u1')], 'fortran_order': False, 'shape': (1,), }"
   x <- npy_header_bytes(d, raw(4))

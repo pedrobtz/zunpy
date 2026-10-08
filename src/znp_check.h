@@ -57,6 +57,7 @@ const char *znp_status_name(znp_status st);
 #define ZNP_MAX_DIMS_CAP    64     /* NumPy 2's own ceiling */
 #define ZNP_MAX_SUBDIMS      8     /* dimensions of a subarray field */
 #define ZNP_MAX_DEPTH        8     /* literal nesting (D12) */
+#define ZNP_MAX_ITEMSIZE    ((uint64_t)1 << 53)   /* bytes in one element */
 
 typedef struct {
     uint64_t max_size;      /* bytes of the whole input */

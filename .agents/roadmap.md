@@ -216,6 +216,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 - The round-trip property runs over 64 generated arrays: four R types, eight shapes of 0 to 4 dimensions (with zero-length ones), both orders, with `NA`, `NaN`, `-0`, infinities and the extremes.
 - `conformance.yaml` gained `r-writes`: `tools/conformance-write.R` writes 20 files from R and `tools/conformance.py` checks each against `np.load()`, comparing values rather than strings (R's `%a` and Python's `float.hex()` spell floats differently).
 - `raw` writes `|u1` and reads back as integer; added to design §7.4.
+- The CI fuzzer found a second hole in the Stage 2 `itemsize` guard: with no size limit (`max_size` of `UINT64_MAX`, which the harness tries and R never passes), a saturated itemsize equals the limit and passes. Elements are now also capped at 2^53 bytes whatever the limit; the input is a permanent seed.
 
 ---
 
