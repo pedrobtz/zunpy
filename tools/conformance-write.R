@@ -86,6 +86,29 @@ for (name in names(values)) {
     ))
   }
 }
+# A data frame as a record array (roadmap Stage 5): one segment per column,
+# "@<hex of the name>@<descr>" and its values, as tools/make-fixtures.py
+# writes structured fixtures.
+df <- data.frame(
+  id = c(1L, -2L, 3L), x = c(0.5, NA, -Inf), s = c("a", "h\u00e9", ""),
+  d = as.Date(c("2024-10-08", NA, "1970-01-01")), b = c(TRUE, FALSE, TRUE),
+  stringsAsFactors = FALSE
+)
+names(df)[5] <- "caf\u00e9"
+bytes <- npy_encode(df)
+writeBin(bytes, file.path(out, "r-records.npy"))
+h <- npy_header(bytes)
+back <- npy_decode(bytes)
+segments <- vapply(seq_along(back), function(j) {
+  descr <- h$descr$descr[j]
+  values <- back[[j]]
+  if (substr(descr, 2, 2) == "M") values <- as.numeric(values)
+  paste(c(paste0("@", hex(charToRaw(enc2utf8(names(back)[j]))), "@", descr),
+          show(values, descr)), collapse = " ")
+}, "")
+rows <- c(rows, paste("r-records.npy", "|V", nrow(df), "C", "R", "-",
+                      paste(segments, collapse = " | "), sep = "\t"))
+
 writeLines(c("file\tdescr\tshape\torder\tnumpy\tsha256\tvalues", rows),
            file.path(out, "MANIFEST.tsv"))
 cat(length(rows), "files written to", out, "\n")

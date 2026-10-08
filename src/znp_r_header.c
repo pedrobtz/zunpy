@@ -18,6 +18,11 @@ static SEXP descr_string(const znp_dtype *dt)
     return Rf_mkCharCE(buf, CE_UTF8);
 }
 
+SEXP znp_dtype_sexp(const znp_dtype *dt)
+{
+    return Rf_ScalarString(descr_string(dt));
+}
+
 SEXP znp_descr_sexp(const znp_plan *plan)
 {
     return plan->structured ? Rf_ScalarString(NA_STRING)

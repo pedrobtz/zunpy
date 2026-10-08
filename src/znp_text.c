@@ -66,13 +66,14 @@ static uint32_t utf8_next(const unsigned char **p)
 
 /* ---- reading ------------------------------------------------------------ */
 
-/* n elements of S<width> or V<width> as a list of raw vectors; trailing
-   NULs stripped for S. */
-SEXP znp_read_bytes(const uint8_t *base, size_t n, size_t width, int strip)
+/* n elements of S<width> or V<width>, `stride` bytes apart, as a list of
+   raw vectors; trailing NULs stripped for S. */
+SEXP znp_read_bytes(const uint8_t *base, size_t n, size_t stride, size_t width,
+                    int strip)
 {
     SEXP out = PROTECT(Rf_allocVector(VECSXP, (R_xlen_t)n));
     for (size_t i = 0; i < n; i++) {
-        const uint8_t *p = base + i * width;
+        const uint8_t *p = base + i * stride;
         size_t len = width;
         if (strip)
             while (len > 0 && p[len - 1] == 0)
@@ -93,14 +94,14 @@ SEXP znp_read_bytes(const uint8_t *base, size_t n, size_t width, int strip)
    *bad is the element and the return is R_NilValue with *status set:
    1 a NUL inside a value, 2 not valid UTF-8, 3 a string longer than R
    allows. */
-SEXP znp_read_s(const uint8_t *base, size_t n, size_t width, int encoding,
-                int *status, size_t *bad)
+SEXP znp_read_s(const uint8_t *base, size_t n, size_t stride, size_t width,
+                int encoding, int *status, size_t *bad)
 {
     SEXP out = PROTECT(Rf_allocVector(STRSXP, (R_xlen_t)n));
     char *buf = encoding == 1 ? R_alloc(2 * width + 1, 1) : NULL;
     *status = 0;
     for (size_t i = 0; i < n; i++) {
-        const char *p = (const char *)base + i * width;
+        const char *p = (const char *)base + i * stride;
         size_t len = width;
         while (len > 0 && p[len - 1] == 0)
             len--;
@@ -156,14 +157,14 @@ SEXP znp_read_s(const uint8_t *base, size_t n, size_t width, int encoding,
 /* n elements of U<chars> (UCS-4, big_endian or not) as UTF-8 strings.
    *status: 1 a NUL inside a value, 2 a surrogate or a code point above
    U+10FFFF, 3 a string longer than R allows. */
-SEXP znp_read_u(const uint8_t *base, size_t n, size_t chars, int big_endian,
-                int *status, size_t *bad)
+SEXP znp_read_u(const uint8_t *base, size_t n, size_t stride, size_t chars,
+                int big_endian, int *status, size_t *bad)
 {
     SEXP out = PROTECT(Rf_allocVector(STRSXP, (R_xlen_t)n));
     char *buf = R_alloc(4 * chars + 1, 1);
     *status = 0;
     for (size_t i = 0; i < n; i++) {
-        const uint8_t *p = base + i * 4 * chars;
+        const uint8_t *p = base + i * stride;
         size_t len = chars;
         while (len > 0 && (big_endian ? zb_rd_u32be(p + 4 * (len - 1))
                                       : zb_rd_u32le(p + 4 * (len - 1))) == 0)
@@ -214,10 +215,11 @@ size_t znp_text_width(SEXP x, int as_u)
     return w;
 }
 
-/* Writes x into n elements of `width` (code points for U, bytes for S).
-   Returns 0, or 1 with *bad when an element is longer than the width, or 2
-   when an element holds NUL or is not valid UTF-8 (U only). */
-int znp_write_text(SEXP x, uint8_t *dst, size_t width, int as_u, size_t *bad)
+/* Writes x into n elements of `width` (code points for U, bytes for S),
+   `stride` bytes apart. Returns 0, or 1 with *bad when an element is longer
+   than the width, or 2 when an element is not valid UTF-8 (U only). */
+int znp_write_text(SEXP x, uint8_t *dst, size_t stride, size_t width, int as_u,
+                   size_t *bad)
 {
     R_xlen_t n = XLENGTH(x);
     size_t item = as_u ? 4 * width : width;
@@ -225,7 +227,7 @@ int znp_write_text(SEXP x, uint8_t *dst, size_t width, int as_u, size_t *bad)
         SEXP s = STRING_ELT(x, i);
         const char *c = CHAR(s);
         size_t len = (size_t)LENGTH(s);
-        uint8_t *p = dst + (size_t)i * item;
+        uint8_t *p = dst + (size_t)i * stride;
         memset(p, 0, item);
         if (as_u) {
             if (!zuf_utf8_valid(c, len)) {

@@ -20,7 +20,9 @@
 #           exactly by R's as.numeric(), which decimal text at the extremes
 #           is not), or nan, inf, -inf; booleans as True/False; complex as
 #           re:im; S and V bytes as b:<hex>, U strings as s:<hex of UTF-8>;
-#           datetime64 and timedelta64 as their integer counts, NaT as NaT
+#           datetime64 and timedelta64 as their integer counts, NaT as NaT;
+#           a structured array as one segment per R column (see
+#           record_tokens()), segments separated by a "|" token
 import hashlib
 import os
 import sys
@@ -55,6 +57,34 @@ def fmt(v):
     return str(int(v))
 
 
+def column_tokens(flat):
+    if flat.dtype.kind in "Mm":
+        # The counts, with NaT spelled out.
+        return ["NaT" if c == -(2**63) else str(c)
+                for c in flat.view(flat.dtype.str[0] + "i8").tolist()]
+    return [fmt(v) for v in flat.tolist()]
+
+
+def record_tokens(flat):
+    """A structured array as one segment per R column (a field, or each
+    element of a subarray field in C order): "@<hex of the column name>@<the
+    element dtype>" and its values in C order of the records, segments
+    separated by a "|" token."""
+    out = []
+    for name in flat.dtype.names:
+        ft = flat.dtype.fields[name][0]
+        base, sub = (ft.subdtype if ft.subdtype else (ft, ()))
+        m = int(np.prod(sub)) if sub else 1
+        col = flat[name].reshape(len(flat), m) if sub else flat[name].reshape(len(flat), 1)
+        for e in range(m):
+            label = name if not sub else f"{name}.{e + 1}"
+            if out:
+                out.append("|")
+            out.append("@" + label.encode().hex() + "@" + base.str)
+            out.extend(column_tokens(np.ascontiguousarray(col[:, e])))
+    return out
+
+
 def save(name, a, fortran=False):
     path = os.path.join(OUT, name + ".npy")
     # np.array(order=), not np.ascontiguousarray(), which makes a 0-d array
@@ -64,11 +94,10 @@ def save(name, a, fortran=False):
     with open(path, "rb") as fp:
         digest = hashlib.sha256(fp.read()).hexdigest()
     flat = np.array(a, order="C").reshape(-1)
-    if a.dtype.kind in "Mm":
-        # The counts, with NaT spelled out.
-        tokens = ["NaT" if c == -(2**63) else str(c) for c in flat.view(flat.dtype.str[0] + "i8").tolist()]
+    if a.dtype.names is not None:
+        tokens = record_tokens(flat)
     else:
-        tokens = [fmt(v) for v in flat.tolist()]
+        tokens = column_tokens(flat)
     # NumPy's own rule for fortran_order.
     f_order = arr.flags.f_contiguous and not arr.flags.c_contiguous
     rows.append([
@@ -177,6 +206,51 @@ times = {
 for name, t in times.items():
     save(name, t)
 save("dt-day-2d-c", np.array(["2000-01-01", "2000-01-02", "NaT", "2000-01-04"], dtype="<M8[D]").reshape(2, 2))
+
+# Structured dtypes (roadmap Stage 5): plain, big-endian, subarrays,
+# aligned with padding, titles, more than one dimension in both orders,
+# Latin-1 and non-Latin-1 field names, and no records at all.
+basic = np.dtype([("id", "<i4"), ("x", "<f8"), ("name", "<U5"), ("flag", "|b1"),
+                  ("t", "<M8[s]"), ("raw", "|S3")])
+rec = np.zeros(4, basic)
+rec["id"] = [1, -2, 3, 2**31 - 1]
+rec["x"] = [0.5, np.nan, -np.inf, 1e300]
+rec["name"] = ["a", "h\u00e9llo", "", "\U0001F600"]
+rec["flag"] = [True, False, True, False]
+rec["t"] = np.array(["2024-10-08T12:00:00", "NaT", "1970-01-01T00:00:00", "1969-12-31T23:59:59"], dtype="M8[s]")
+rec["raw"] = [b"ab", b"", b"xyz", b"q"]
+save("rec-basic", rec)
+be = np.zeros(3, np.dtype([("i", ">i4"), ("f", ">f8"), ("c", ">c8")]))
+be["i"] = [1, -1, 7]
+be["f"] = [1.5, -0.0, 2.25]
+be["c"] = [1 + 2j, -1j, 0]
+save("rec-be", be)
+sub = np.zeros(2, np.dtype([("xyz", "<f4", (3,)), ("m", "<i2", (2, 2)), ("k", "|u1")]))
+sub["xyz"] = [[1, 2, 3], [4, 5, 6]]
+sub["m"] = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
+sub["k"] = [9, 255]
+save("rec-subarray", sub)
+al = np.zeros(2, np.dtype([("a", "|i1"), ("b", "<i8"), ("c", "<f4")], align=True))
+al["a"] = [1, -1]
+al["b"] = [2**40, -5]
+al["c"] = [0.25, 8]
+save("rec-aligned", al)
+ti = np.zeros(2, np.dtype([(("Title A", "a"), "<i2"), ("b", "<u2")]))
+ti["a"] = [1, 2]
+ti["b"] = [3, 65535]
+save("rec-titles", ti)
+grid = np.zeros((2, 3), np.dtype([("v", "<i4"), ("w", "<f8")]))
+grid["v"] = np.arange(6).reshape(2, 3)
+grid["w"] = np.arange(6).reshape(2, 3) / 4
+save("rec-2d-c", grid)
+save("rec-2d-f", grid, fortran=True)
+lat = np.zeros(2, np.dtype([("caf\u00e9", "<i4")]))
+lat["caf\u00e9"] = [1, 2]
+save("rec-latin1-name", lat)
+utf = np.zeros(2, np.dtype([("\u20ac", "<i4"), ("b", "<f8")]))
+utf["\u20ac"] = [5, 6]
+save("rec-utf8-name", utf)
+save("rec-empty", np.zeros(0, basic))
 
 # Values R holds only on request (design section 6.1 notes): NA_integer_'s
 # bit pattern, 64-bit integers beyond 2^53, and u8 at 2^63.

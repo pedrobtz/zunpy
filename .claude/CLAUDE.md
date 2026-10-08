@@ -13,7 +13,7 @@ Sibling checkouts are in `../`. `zucbor` is the model for the check-then-build s
 
 ## Current state
 
-**2026-10-08: Stages 0–4 done.** `npy_decode()` reads and `npy_encode()` writes every non-structured dtype of design §6.1 and §7.1 as raw vectors: numbers, booleans, complex, `S`/`U` strings, `V` bytes (read only), dates and times; `npy_header()` reads a header. The bytes written match `numpy.save()`'s. Structured dtypes, `.npz` and files are not built yet. Gates: `hardening.yaml` (lint, symbols, mutation check over 19 guards, fuzzing with its canary), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk) and `conformance.yaml` (fixtures regenerated with NumPy and checked against `np.load()`, and R-written files read by `np.load()`). zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
+**2026-10-08: Stages 0–5 done.** `npy_decode()` reads and `npy_encode()` writes every dtype of design §6.1 and §7.1 as raw vectors: numbers, booleans, complex, `S`/`U` strings, `V` bytes (read only), dates and times, and structured dtypes as data frames; `npy_header()` reads a header. The bytes written match `numpy.save()`'s. `.npz` and files are not built yet. Gates: `hardening.yaml` (lint, symbols, mutation check over 19 guards, fuzzing with its canary), `native-checks.yaml` (sanitizers, valgrind, LTO, gctorture, rchk) and `conformance.yaml` (fixtures regenerated with NumPy and checked against `np.load()`, and R-written files read by `np.load()`). zufast, zubin and zukomp are not on CRAN (*verified 2026-10-08*), so the release (Stage 9) waits for all three. Tracking: parent #2, stages #3–#12.
 
 Update this paragraph at the end of every stage.
 
@@ -79,8 +79,8 @@ src/          init.c          registration only
               znp_check.h     the check phase's R-free interface and the plan struct
               znp_header.c    prefix, dict grammar, descr grammar, size check, limits
               znp_r_header.c  .Call glue: the plan as an R list, statuses by name
-              znp_build.c     plan -> R value through zubin's unpack kernels; C-order permutation
-              znp_write.c     header formatted as NumPy does; data packed into one raw vector
+              znp_build.c     plan -> R value: read_column() reads any dtype at any stride; records as columns
+              znp_write.c     header formatted as NumPy does (repr() of field names too); data packed into one raw vector
               znp_perm.c      C order <-> R order, one pass, both directions
               znp_text.c      S, U and V elements, both directions
               znp_time.c      datetime64 / timedelta64 counts <-> doubles, exact or refused
