@@ -35,6 +35,8 @@
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.0.0.9000" id="zunpy-0009000">zunpy 0.0.0.9000<a class="anchor" aria-label="anchor" href="#zunpy-0009000"></a></h2>
 <ul><li>
+<code><a href="../reference/npy_encode.html">npy_encode()</a></code> writes an R vector, matrix or array as a <code>.npy</code> file in a raw vector, byte-identical to <code>numpy.save()</code>; <code>dtype</code> narrows exactly or refuses, and <code>order</code> chooses Fortran or C order. <code><a href="../reference/npy_dtype.html">npy_dtype()</a></code> gives the default dtype.</li>
+<li>
 <code><a href="../reference/npy_decode.html">npy_decode()</a></code> reads a <code>.npy</code> file held in a raw vector: every numeric, boolean and complex dtype, in either byte order and memory order, with the header checked whole before anything is allocated.</li>
 <li>
 <code><a href="../reference/npy_header.html">npy_header()</a></code> reads a header alone.</li>

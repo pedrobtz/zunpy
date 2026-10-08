@@ -7,6 +7,13 @@
 - [`npy_header()`](https://pedrobtz.github.io/zunpy/reference/npy_header.md)
   : Read the header of a NumPy array
 
+## Writing
+
+- [`npy_encode()`](https://pedrobtz.github.io/zunpy/reference/npy_encode.md)
+  : Write an R array as NumPy bytes
+- [`npy_dtype()`](https://pedrobtz.github.io/zunpy/reference/npy_dtype.md)
+  : The NumPy dtype for an R value
+
 ## About
 
 - [`zunpy_info()`](https://pedrobtz.github.io/zunpy/reference/zunpy_info.md)
