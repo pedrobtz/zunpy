@@ -47,6 +47,7 @@ compared with the bytes present, before anything is allocated.</p>
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">npy_decode</span><span class="op">(</span></span>
 <span>  <span class="va">x</span>,</span>
+<span>  names <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  order <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"R"</span>, <span class="st">"file"</span><span class="op">)</span>,</span>
 <span>  int64 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"double"</span>, <span class="st">"integer64"</span><span class="op">)</span>,</span>
 <span>  na <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"error"</span>, <span class="st">"allow"</span><span class="op">)</span>,</span>
@@ -55,7 +56,8 @@ compared with the bytes present, before anything is allocated.</p>
 <span>  datetime <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"convert"</span>, <span class="st">"integer64"</span><span class="op">)</span>,</span>
 <span>  max_size <span class="op">=</span> <span class="fl">2</span> <span class="op">*</span> <span class="fl">1024</span><span class="op">^</span><span class="fl">3</span>,</span>
 <span>  max_header <span class="op">=</span> <span class="fl">10000</span>,</span>
-<span>  max_dims <span class="op">=</span> <span class="fl">32</span></span>
+<span>  max_dims <span class="op">=</span> <span class="fl">32</span>,</span>
+<span>  max_members <span class="op">=</span> <span class="fl">10000</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -64,7 +66,11 @@ compared with the bytes present, before anything is allocated.</p>
 
 
 <dl><dt id="arg-x">x<a class="anchor" aria-label="anchor" href="#arg-x"></a></dt>
-<dd><p>A raw vector holding a whole <code>.npy</code> file.</p></dd>
+<dd><p>A raw vector holding a whole <code>.npy</code> or <code>.npz</code> file.</p></dd>
+
+
+<dt id="arg-names">names<a class="anchor" aria-label="anchor" href="#arg-names"></a></dt>
+<dd><p>For a <code>.npz</code>, the members to read (by default all of them).</p></dd>
 
 
 <dt id="arg-order">order<a class="anchor" aria-label="anchor" href="#arg-order"></a></dt>
@@ -108,14 +114,27 @@ default.</p></dd>
 <dt id="arg-max-dims">max_dims<a class="anchor" aria-label="anchor" href="#arg-max-dims"></a></dt>
 <dd><p>The most dimensions accepted, at most 64.</p></dd>
 
+
+<dt id="arg-max-members">max_members<a class="anchor" aria-label="anchor" href="#arg-max-members"></a></dt>
+<dd><p>For a <code>.npz</code>, the most members accepted.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A vector, matrix or array.</p>
+    <p>A vector, matrix, array or data frame; for a <code>.npz</code>, a named list
+of them.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>Types map as follows: <code>b1</code> to logical; <code>i1</code>, <code>u1</code>, <code>i2</code>, <code>u2</code> and <code>i4</code>
+    <p>A <code>.npz</code> file (a ZIP archive of <code>.npy</code> files, as <code>numpy.savez()</code> and
+<code>numpy.savez_compressed()</code> write) is told apart by its first bytes and
+read as a named list, one element per member, named without the <code>.npy</code>
+suffix; <code>names</code> reads only some of them. The archive's directory is
+checked before any member is read: the number of members against
+<code>max_members</code> and their declared sizes against <code>max_size</code>. A compressed
+member is inflated no further than its declared size, and every member
+is checked against its CRC-32.</p>
+<p>Types map as follows: <code>b1</code> to logical; <code>i1</code>, <code>u1</code>, <code>i2</code>, <code>u2</code> and <code>i4</code>
 to integer; <code>u4</code>, <code>f2</code>, <code>f4</code> and <code>f8</code> to double; <code>i8</code> and <code>u8</code> to double,
 or to <code>integer64</code> with <code>int64 = "integer64"</code>; <code>c8</code> and <code>c16</code> to complex.
 Every value is converted exactly or refused: an <code>i4</code> of <code>-2^31</code> is R's
@@ -145,8 +164,8 @@ its dimensions reversed, its memory identical to the file's.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
-    <div class="dont-index"><p><code><a href="npy_header.html">npy_header()</a></code> for the header alone; <a href="zunpy-conditions.html">zunpy-conditions</a> for the
-errors.</p></div>
+    <div class="dont-index"><p><code><a href="npy_header.html">npy_header()</a></code> for the header alone; <code><a href="npy_names.html">npy_names()</a></code> for the
+members of a <code>.npz</code>; <a href="zunpy-conditions.html">zunpy-conditions</a> for the errors.</p></div>
     </div>
 
     <div class="section level2">

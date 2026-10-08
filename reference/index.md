@@ -4,8 +4,14 @@
 
 - [`npy_decode()`](https://pedrobtz.github.io/zunpy/reference/npy_decode.md)
   : Read a NumPy array from bytes
+
 - [`npy_header()`](https://pedrobtz.github.io/zunpy/reference/npy_header.md)
   : Read the header of a NumPy array
+
+- [`npy_names()`](https://pedrobtz.github.io/zunpy/reference/npy_names.md)
+  :
+
+  The names of the arrays in a `.npz`
 
 ## Writing
 

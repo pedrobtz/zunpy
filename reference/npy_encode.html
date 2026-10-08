@@ -51,7 +51,8 @@ for the same array.</p>
 <span>  order <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"F"</span>, <span class="st">"C"</span><span class="op">)</span>,</span>
 <span>  na <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"error"</span>, <span class="st">"allow"</span><span class="op">)</span>,</span>
 <span>  encoding <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"UTF-8"</span>, <span class="st">"latin1"</span>, <span class="st">"bytes"</span><span class="op">)</span>,</span>
-<span>  unit <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"us"</span>, <span class="st">"ns"</span>, <span class="st">"ms"</span>, <span class="st">"s"</span><span class="op">)</span></span>
+<span>  unit <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"us"</span>, <span class="st">"ns"</span>, <span class="st">"ms"</span>, <span class="st">"s"</span><span class="op">)</span>,</span>
+<span>  compress <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -62,7 +63,8 @@ for the same array.</p>
 <dl><dt id="arg-x">x<a class="anchor" aria-label="anchor" href="#arg-x"></a></dt>
 <dd><p>A logical, integer, double, complex, raw or character vector,
 matrix or array, a factor, a <code>Date</code>, <code>POSIXct</code> or <code>difftime</code> vector, a
-<code><a href="https://bit64.r-lib.org/reference/bit64-package.html" class="external-link">bit64::integer64</a></code> vector, or a data frame of such columns.</p></dd>
+<code><a href="https://bit64.r-lib.org/reference/bit64-package.html" class="external-link">bit64::integer64</a></code> vector, a data frame of such columns, or a named list
+of any of these.</p></dd>
 
 
 <dt id="arg-dtype">dtype<a class="anchor" aria-label="anchor" href="#arg-dtype"></a></dt>
@@ -91,10 +93,15 @@ Latin-1 form is an error), and <code>"bytes"</code> writes the bytes as they are
 <dd><p>The unit for <code>POSIXct</code>: <code>"us"</code> (the default), <code>"ns"</code>, <code>"ms"</code>
 or <code>"s"</code>.</p></dd>
 
+
+<dt id="arg-compress">compress<a class="anchor" aria-label="anchor" href="#arg-compress"></a></dt>
+<dd><p>For a list (a <code>.npz</code>), whether to compress the members.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A raw vector holding a whole <code>.npy</code> file.</p>
+    <p>A raw vector holding a whole <code>.npy</code> file, or a <code>.npz</code> file for a
+list.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
@@ -128,6 +135,12 @@ then be a named character vector giving the dtype of some columns. Row
 names are dropped. A data frame that <code><a href="npy_decode.html">npy_decode()</a></code> made from an array of
 records with other than one dimension carries <code>npy_shape</code>, and is written
 back with that shape. Field names must be non-empty and unique.</p>
+<p>A named list is written as a <code>.npz</code>: a ZIP archive holding each element
+as <code>&lt;name&gt;.npy</code>, in list order, stored, or compressed with DEFLATE when
+<code>compress = TRUE</code> (what <code>numpy.savez_compressed()</code> writes). Names must be
+non-empty and unique, and may not hold a path separator or start with
+<code>..</code>. The archive is deterministic: every member is dated 1980-01-01, as
+NumPy dates them. <code>dtype</code> is then a list named by elements.</p>
 <p>A matrix or array is written in R's own (Fortran) order with
 <code>fortran_order</code> set, which costs no copy; <code>order = "C"</code> writes C order
 for readers that need it. <code>dimnames</code> and names are dropped. A length-1

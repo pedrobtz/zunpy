@@ -13,7 +13,8 @@ npy_encode(
   order = c("F", "C"),
   na = c("error", "allow"),
   encoding = c("UTF-8", "latin1", "bytes"),
-  unit = c("us", "ns", "ms", "s")
+  unit = c("us", "ns", "ms", "s"),
+  compress = FALSE
 )
 ```
 
@@ -24,7 +25,7 @@ npy_encode(
   A logical, integer, double, complex, raw or character vector, matrix
   or array, a factor, a `Date`, `POSIXct` or `difftime` vector, a
   [`bit64::integer64`](https://bit64.r-lib.org/reference/bit64-package.html)
-  vector, or a data frame of such columns.
+  vector, a data frame of such columns, or a named list of any of these.
 
 - dtype:
 
@@ -52,9 +53,13 @@ npy_encode(
 
   The unit for `POSIXct`: `"us"` (the default), `"ns"`, `"ms"` or `"s"`.
 
+- compress:
+
+  For a list (a `.npz`), whether to compress the members.
+
 ## Value
 
-A raw vector holding a whole `.npy` file.
+A raw vector holding a whole `.npy` file, or a `.npz` file for a list.
 
 ## Details
 
@@ -96,6 +101,13 @@ names are dropped. A data frame that
 made from an array of records with other than one dimension carries
 `npy_shape`, and is written back with that shape. Field names must be
 non-empty and unique.
+
+A named list is written as a `.npz`: a ZIP archive holding each element
+as `<name>.npy`, in list order, stored, or compressed with DEFLATE when
+`compress = TRUE` (what `numpy.savez_compressed()` writes). Names must
+be non-empty and unique, and may not hold a path separator or start with
+`..`. The archive is deterministic: every member is dated 1980-01-01, as
+NumPy dates them. `dtype` is then a list named by elements.
 
 A matrix or array is written in R's own (Fortran) order with
 `fortran_order` set, which costs no copy; `order = "C"` writes C order

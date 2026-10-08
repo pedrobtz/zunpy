@@ -34,7 +34,9 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.0.0.9000" id="zunpy-0009000">zunpy 0.0.0.9000<a class="anchor" aria-label="anchor" href="#zunpy-0009000"></a></h2>
-<ul><li>Structured dtypes (record arrays) read as data frames, one column per field or subarray element, and data frames write as record arrays; <code>dtype</code> can name the dtype of some columns.</li>
+<ul><li>
+<code>.npz</code> archives: <code><a href="../reference/npy_decode.html">npy_decode()</a></code> reads one as a named list (<code>names</code> for some members), <code><a href="../reference/npy_encode.html">npy_encode()</a></code> writes a named list as one (<code>compress</code> for DEFLATE), and <code><a href="../reference/npy_names.html">npy_names()</a></code> lists the members. The directory is checked before any member is read, members are inflated no further than their declared size, and every member’s CRC-32 is checked.</li>
+<li>Structured dtypes (record arrays) read as data frames, one column per field or subarray element, and data frames write as record arrays; <code>dtype</code> can name the dtype of some columns.</li>
 <li>Strings, dates and times, both ways: <code>S&lt;n&gt;</code> and <code>U&lt;n&gt;</code> read as UTF-8 character vectors (<code>strings = "raw"</code> and <code>encoding</code> for <code>S&lt;n&gt;</code>) and are written from character vectors and factors; <code>V&lt;n&gt;</code> reads as a list of raw; <code>datetime64</code> and <code>timedelta64</code> read as <code>Date</code>, <code>POSIXct</code> (UTC) and <code>difftime</code>, or as <code>integer64</code> counts, and are written from them.</li>
 <li>
 <code><a href="../reference/npy_encode.html">npy_encode()</a></code> writes an R vector, matrix or array as a <code>.npy</code> file in a raw vector, byte-identical to <code>numpy.save()</code>; <code>dtype</code> narrows exactly or refuses, and <code>order</code> chooses Fortran or C order. <code><a href="../reference/npy_dtype.html">npy_dtype()</a></code> gives the default dtype.</li>

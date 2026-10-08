@@ -9,6 +9,7 @@ compared with the bytes present, before anything is allocated.
 ``` r
 npy_decode(
   x,
+  names = NULL,
   order = c("R", "file"),
   int64 = c("double", "integer64"),
   na = c("error", "allow"),
@@ -17,7 +18,8 @@ npy_decode(
   datetime = c("convert", "integer64"),
   max_size = 2 * 1024^3,
   max_header = 10000,
-  max_dims = 32
+  max_dims = 32,
+  max_members = 10000
 )
 ```
 
@@ -25,7 +27,11 @@ npy_decode(
 
 - x:
 
-  A raw vector holding a whole `.npy` file.
+  A raw vector holding a whole `.npy` or `.npz` file.
+
+- names:
+
+  For a `.npz`, the members to read (by default all of them).
 
 - order:
 
@@ -67,11 +73,25 @@ npy_decode(
 
   The most dimensions accepted, at most 64.
 
+- max_members:
+
+  For a `.npz`, the most members accepted.
+
 ## Value
 
-A vector, matrix or array.
+A vector, matrix, array or data frame; for a `.npz`, a named list of
+them.
 
 ## Details
+
+A `.npz` file (a ZIP archive of `.npy` files, as `numpy.savez()` and
+`numpy.savez_compressed()` write) is told apart by its first bytes and
+read as a named list, one element per member, named without the `.npy`
+suffix; `names` reads only some of them. The archive's directory is
+checked before any member is read: the number of members against
+`max_members` and their declared sizes against `max_size`. A compressed
+member is inflated no further than its declared size, and every member
+is checked against its CRC-32.
 
 Types map as follows: `b1` to logical; `i1`, `u1`, `i2`, `u2` and `i4`
 to integer; `u4`, `f2`, `f4` and `f8` to double; `i8` and `u8` to
@@ -109,6 +129,8 @@ with its dimensions reversed, its memory identical to the file's.
 
 [`npy_header()`](https://pedrobtz.github.io/zunpy/reference/npy_header.md)
 for the header alone;
+[`npy_names()`](https://pedrobtz.github.io/zunpy/reference/npy_names.md)
+for the members of a `.npz`;
 [zunpy-conditions](https://pedrobtz.github.io/zunpy/reference/zunpy-conditions.md)
 for the errors.
 
