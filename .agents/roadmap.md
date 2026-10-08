@@ -18,7 +18,7 @@ Sizes are relative: **S** ≈ a sitting, **M** ≈ a few, **L** ≈ the stage is
 
 **Status never goes in a heading.** A heading is `## Stage N — Title · Size` and nothing else; the state is the **Status:** line under it.
 
-**Tracking.** A `v0.1.0` parent issue and one `stage`-labelled sub-issue per stage, each linking to its heading here. None exists on 2026-10-08; Stage 0 opens them and `.github/scripts/stage-cards.sh` in `pedrobtz/packages` puts the parent on the board. Each stage gains a **What actually happened** block when it closes.
+**Tracking.** A `v0.1.0` parent issue and one `stage`-labelled sub-issue per stage, each linking to its heading here. The parent is [#2](https://github.com/pedrobtz/zunpy/issues/2), the stages #3–#12; `.github/scripts/stage-cards.sh` in `pedrobtz/packages` puts the parent on the board. Each stage gains a **What actually happened** block when it closes.
 
 ## The release order, and what it costs
 
@@ -74,7 +74,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 ## Stage 0 — Package identity and a clean baseline · S
 
-**Status:** in progress 2026-10-08: design, roadmap and `.claude/CLAUDE.md` written; nothing else.
+**Status:** done 2026-10-08 ([#3](https://github.com/pedrobtz/zunpy/issues/3)).
 
 **Goal:** the `usethis` skeleton becomes a package that checks 0/0/0 against its providers, with the conditions of §11 in place and the work tracked.
 
@@ -98,6 +98,16 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 - The tracking issues exist and the parent is on the board.
 
 **Not this stage:** any header parsing.
+
+**What actually happened**
+
+- The design, roadmap and `.claude/CLAUDE.md` were adopted first, in their own pull request (#1).
+- zubin's headers report `ZUBIN_VERSION "0.0.0"` and the package is `0.0.0.9000`, so `LinkingTo: zubin (>= 0.0.0.9000)` until zubin is tagged; Stage 9 raises it to `(>= 0.1.0)`.
+- The `LinkingTo` proof is `src/znp_info.c`: one call into `rw.h`, `bits.h`, `number.h` and `utf8.h`, reported by `zunpy_info()` as `selftest`, and the zubin and zufast versions compiled in.
+- `knitr`, `rmarkdown` and `VignetteBuilder` wait for the vignette (Stage 8), and `reticulate` for the conformance job (Stage 2); declared early they are unused.
+- The symbol test is in `test-info.R` with zubin's `helper-abi.R`; `tools/check-symbols` is zudedup's, and was seen to reject a planted object.
+- `znp_` / `ZNP_` is used by no sibling's `src/` or `inst/include/`.
+- Adding zunpy to `stage-cards.sh` in `pedrobtz/packages` (the board) is left to the maintainer.
 
 ---
 

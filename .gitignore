@@ -1,1 +1,11 @@
 docs
+inst/doc
+CRAN-SUBMISSION
+# build products, anywhere
+*.o
+*.so
+*.dll
+*.dylib
+# fuzz working files
+fuzz/corpus/
+fuzz/artifacts/
