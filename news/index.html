@@ -49,6 +49,7 @@
 <li>
 <code><a href="../reference/npy_decode.html">npy_decode()</a></code> reads a <code>.npy</code> file held in a raw vector, in either byte order and memory order, with the header checked whole before anything is allocated. <code><a href="../reference/npy_header.html">npy_header()</a></code> reads a header alone.</li>
 <li>The condition classes of <code><a href="../reference/zunpy-conditions.html">?"zunpy-conditions"</a></code> and <code><a href="../reference/zunpy_info.html">zunpy_info()</a></code>.</li>
+<li>A URL or file that cannot be opened (an HTTP 404, a file without read permission) is <code>zunpy_io_error</code>, with the cause as its message, rather than a warning followed by a plain error; the connection is closed.</li>
 </ul></div>
   </main></div>
 

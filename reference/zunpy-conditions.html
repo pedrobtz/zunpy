@@ -96,7 +96,8 @@ argument's name, and <code>limit_value</code>. Its subclasses are
 
 <dt><code>zunpy_io_error</code></dt>
 <dd><p>A file or connection could not be read or
-written.</p></dd>
+written, or a URL or file could not be opened (an HTTP 404, a file
+without read permission).</p></dd>
 
 
 </dl><p>Warnings inherit from <code>zunpy_warning</code>: <code>zunpy_byte_order</code> when a dtype

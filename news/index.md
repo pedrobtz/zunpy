@@ -51,3 +51,6 @@ First release.
   [`?"zunpy-conditions"`](https://pedrobtz.github.io/zunpy/reference/zunpy-conditions.md)
   and
   [`zunpy_info()`](https://pedrobtz.github.io/zunpy/reference/zunpy_info.md).
+- A URL or file that cannot be opened (an HTTP 404, a file without read
+  permission) is `zunpy_io_error`, with the cause as its message, rather
+  than a warning followed by a plain error; the connection is closed.

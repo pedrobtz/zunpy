@@ -49,6 +49,10 @@ A connection that is not open is opened in binary mode and closed again;
 an open one must be binary, is read from its current position, and is
 left open.
 
+A path that does not exist is `zunpy_invalid_argument`. A URL or file
+that cannot be opened, such as an HTTP 404, is `zunpy_io_error`, with
+the cause as its message.
+
 ## See also
 
 [`npy_write()`](https://pedrobtz.github.io/zunpy/reference/npy_write.md);

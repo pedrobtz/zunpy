@@ -52,7 +52,8 @@ member, and `member` names it.
 
 - `zunpy_io_error`:
 
-  A file or connection could not be read or written.
+  A file or connection could not be read or written, or a URL or file
+  could not be opened (an HTTP 404, a file without read permission).
 
 Warnings inherit from `zunpy_warning`: `zunpy_byte_order` when a dtype
 gives its byte order as native (`=`) or not at all, which NumPy never

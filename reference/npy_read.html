@@ -83,6 +83,9 @@ it. For a <code>.npz</code>, <code>names</code> decodes and inflates only the me
 <p>A connection that is not open is opened in binary mode and closed again;
 an open one must be binary, is read from its current position, and is
 left open.</p>
+<p>A path that does not exist is <code>zunpy_invalid_argument</code>. A URL or file
+that cannot be opened, such as an HTTP 404, is <code>zunpy_io_error</code>, with
+the cause as its message.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
