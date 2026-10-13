@@ -17,6 +17,10 @@
 #' an open one must be binary, is read from its current position, and is
 #' left open.
 #'
+#' A path that does not exist is `zunpy_invalid_argument`. A URL or file
+#' that cannot be opened, such as an HTTP 404, is `zunpy_io_error`, with
+#' the cause as its message.
+#'
 #' @param file A path, a URL (`http://`, `https://`, `ftp://`, `ftps://` or
 #'   `file://`), or a connection.
 #' @inheritParams npy_decode
@@ -177,7 +181,10 @@ znp_read_bounded <- function(file, max_size, call) {
         format(max_size, scientific = FALSE), file, format(size, scientific = FALSE)
       ), call = call)
     }
-    con <- file(file, "rb")
+    # An unreadable file fails here, through the same hook as a URL.
+    con <- zu_open_rb(file(file), function(message) {
+      znp_io_error(paste0("could not open the input: ", message), call = call)
+    })
     on.exit(close(con), add = TRUE)
     # Exactly the size: asking for more makes readBin() shrink, so copy, the
     # vector it returns.
@@ -186,6 +193,10 @@ znp_read_bounded <- function(file, max_size, call) {
   input <- zu_open_input(file, what = "file", prefix = "zunpy",
                          abort = function(arg, message) {
                            znp_invalid_argument(arg, message, call = call)
+                         },
+                         fail = function(message) {
+                           znp_io_error(paste0("could not open the input: ",
+                                               message), call = call)
                          })
   if (input$close) on.exit(close(input$con), add = TRUE)
   chunks <- list()
@@ -217,6 +228,10 @@ znp_read_header_bytes <- function(file, max_header, call) {
   input <- zu_open_input(file, what = "file", prefix = "zunpy",
                          abort = function(arg, message) {
                            znp_invalid_argument(arg, message, call = call)
+                         },
+                         fail = function(message) {
+                           znp_io_error(paste0("could not open the input: ",
+                                               message), call = call)
                          })
   if (input$close) on.exit(close(input$con), add = TRUE)
   head <- znp_read_con(input$con, 12, call)

@@ -36,7 +36,8 @@ argument's name, and \code{limit_value}. Its subclasses are
 \code{zunpy_size_limit}, \code{zunpy_header_limit}, \code{zunpy_dims_limit} and
 \code{zunpy_members_limit}.}
 \item{\code{zunpy_io_error}}{A file or connection could not be read or
-written.}
+written, or a URL or file could not be opened (an HTTP 404, a file
+without read permission).}
 }
 
 Warnings inherit from \code{zunpy_warning}: \code{zunpy_byte_order} when a dtype

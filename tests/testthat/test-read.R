@@ -78,6 +78,36 @@ test_that("bad paths and arguments are classed", {
                      "zunpy_io_error")
 })
 
+test_that("a URL that cannot be opened is an io error, without a warning", {
+  # A file:// URL is opened as a URL connection and fails, as an HTTP 404
+  # does, without needing the network.
+  missing <- paste0("file://", file.path(tempdir(), "no-such-file.npy"))
+  before <- nrow(showConnections(all = TRUE))
+  expect_no_warning(
+    err <- tryCatch(npy_read(missing), error = identity)
+  )
+  expect_s3_class(err, "zunpy_io_error")
+  expect_no_warning(
+    err <- tryCatch(npy_header(missing), error = identity)
+  )
+  expect_s3_class(err, "zunpy_io_error")
+  expect_identical(nrow(showConnections(all = TRUE)), before)
+})
+
+test_that("a file without read permission is an io error", {
+  skip_on_os("windows")
+  f <- withr::local_tempfile(fileext = ".npy")
+  npy_write(1:3, f)
+  Sys.chmod(f, "000")
+  skip_if(file.access(f, 4L) == 0L, "the file is still readable (root?)")
+  before <- nrow(showConnections(all = TRUE))
+  expect_no_warning(
+    err <- tryCatch(npy_read(f), error = identity)
+  )
+  expect_s3_class(err, "zunpy_io_error")
+  expect_identical(nrow(showConnections(all = TRUE)), before)
+})
+
 test_that("the fast path and the long way agree", {
   # Little-endian f8, i4 and c16 are copied whole on a little-endian host;
   # the same values in other widths and byte orders go element by element.

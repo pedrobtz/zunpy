@@ -811,7 +811,7 @@ message text).
 | `zunpy_na_error` | an `NA` with no representation in the target |
 | `zunpy_range_error` | a value does not fit the requested dtype |
 | `zunpy_limit_error` | a limit of §12 was reached |
-| `zunpy_io_error` | the file or connection could not be read or written |
+| `zunpy_io_error` | the file or connection could not be opened, read or written |
 
 Fields and detail:
 
@@ -829,6 +829,9 @@ Fields and detail:
   `2^31 - 1`, a string longer than R allows, an `i8` beyond 2^53 with
   `int64 = "double"`.
 - `zunpy_na_error` and `zunpy_range_error` carry `index`.
+- `zunpy_io_error` covers a URL or file that cannot be opened (an HTTP
+  404, a file without read permission), with the cause R gives as its
+  message; a path that does not exist is `zunpy_invalid_argument`.
 - `zunpy_limit_error` carries `limit` and `limit_value`, with the
   subclasses `zunpy_size_limit`, `zunpy_header_limit`, `zunpy_dims_limit`
   and `zunpy_members_limit`.

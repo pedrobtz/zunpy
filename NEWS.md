@@ -28,3 +28,6 @@ First release.
   order and memory order, with the header checked whole before anything is
   allocated. `npy_header()` reads a header alone.
 * The condition classes of `?"zunpy-conditions"` and `zunpy_info()`.
+* A URL or file that cannot be opened (an HTTP 404, a file without read
+  permission) is `zunpy_io_error`, with the cause as its message, rather
+  than a warning followed by a plain error; the connection is closed.
