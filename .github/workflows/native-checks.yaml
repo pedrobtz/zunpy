@@ -37,7 +37,7 @@ jobs:
   # ZUNPY_SKIP_HEAVY skips the large-input cases: they test values, not
   # PROTECT discipline, and under gctorture they would take hours.
   gctorture:
-    uses: pedrobtz/r-actions/.github/workflows/gctorture.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+    uses: pedrobtz/r-actions/.github/workflows/gctorture.yml@17264ce002a9359a492e0183852a555a5bb866e7 # v1.23.0
     with:
       profile: ${{ github.event_name == 'pull_request' && 'quick' || 'full' }}
       timeout-minutes: 240
