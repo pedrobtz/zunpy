@@ -15,3 +15,7 @@
 ^src/.*\.dylib$
 ^doc$
 ^Meta$
+^\.superpowers$
+^\.worktrees$
+^CLAUDE\.md$
+^AGENTS\.md$
