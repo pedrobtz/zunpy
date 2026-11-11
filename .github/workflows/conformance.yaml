@@ -5,8 +5,8 @@
 # suite compares npy_decode() with the same MANIFEST on every platform, so
 # together they compare zunpy with NumPy. Nothing under tests/ needs Python.
 on:
-  push:
-    branches: [main, master]
+  # No `push:`: a pull request already checks its merge with main,
+  # and the schedule checks main (r-actions README, "Pushes to main").
   pull_request:
   workflow_dispatch:
 
