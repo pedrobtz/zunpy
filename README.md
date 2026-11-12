@@ -2,7 +2,7 @@
 
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/pedrobtz/zunpy/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/pedrobtz/zunpy/actions/workflows/R-CMD-check.yaml)
-[![coverage](https://raw.githubusercontent.com/pedrobtz/zunpy/main/.github/badges/coverage.svg)](https://github.com/pedrobtz/zunpy/actions/workflows/coverage.yaml)
+[![coverage](https://raw.githubusercontent.com/pedrobtz/zunpy/gh-pages/badges/coverage.svg)](https://github.com/pedrobtz/zunpy/actions/workflows/coverage.yaml)
 <!-- badges: end -->
 
 zunpy reads and writes NumPy's array files, `.npy` and `.npz`, to and from
