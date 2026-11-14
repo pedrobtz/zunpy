@@ -97,3 +97,24 @@ test_that("#25 a dtype map naming a column or element twice is refused", {
   expect_zunpy_error(npy_encode(v, dtype = list(a = "|u1", a = "<i2")),
                      "zunpy_invalid_argument")
 })
+
+test_that("#25 npy_shape at its bounds: 64 dimensions and 2^53 are accepted", {
+  x <- data.frame(a = 1:2)
+  attr(x, "npy_shape") <- c(2, rep(1, 63))
+  expect_length(npy_header(npy_encode(x))$shape, 64)
+  attr(x, "npy_shape") <- c(2, rep(1, 64))
+  expect_zunpy_error(npy_encode(x), "zunpy_invalid_argument")
+  e <- data.frame(a = integer())
+  attr(e, "npy_shape") <- c(2^53, 0)
+  expect_identical(npy_header(npy_encode(e))$shape, c(2^53, 0))
+  attr(e, "npy_shape") <- c(2^53 + 2, 0)
+  expect_zunpy_error(npy_encode(e), "zunpy_invalid_argument")
+  # The same bounds in C.
+  spec_i4 <- list("i", 4L, "", 0)
+  ok <- .Call(zunpy:::zunpy_encode_records, list(integer()), list(spec_i4),
+              "a", c(2^53, 0), c(0L, 0L), FALSE)
+  expect_identical(ok$status, "ZNP_OK")
+  ok <- .Call(zunpy:::zunpy_encode_records, list(1:2), list(spec_i4),
+              "a", c(2, rep(1, 63)), c(0L, 0L), FALSE)
+  expect_identical(ok$status, "ZNP_OK")
+})
