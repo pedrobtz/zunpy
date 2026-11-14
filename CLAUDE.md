@@ -158,9 +158,10 @@ whole header parsed and validated, the declared size compared with the bytes
 present → a **plan** (dtype, itemsize, shape, order, data offset) → **build
 phase** (`znp_build.c`): one allocation from the plan, conversion through
 zubin's kernels. `.npz` adds a central-directory walk in front and calls the
-same path once per member. Writing is one pass: the header into a fixed stack
-buffer, then header and data into a zubin builder held by a finalized external
-pointer.
+same path once per member. Writing is one pass: the size is known first, so
+header and data go into one raw vector allocated at its final size; a `.npz` is
+sized from its members (`znp_zip_write()` with no buffer) and then written into
+one raw vector the same way.
 
 ## Invariants that are easy to break
 
@@ -213,9 +214,9 @@ pointer.
   its index, never rounded or wrapped. `NA` in `logical` or `integer` is refused
   unless `na = "allow"`.
 - **Nothing heap-allocated crosses a longjmp.** Results are R vectors allocated
-  at their final size and `PROTECT`ed; scratch is `R_alloc()`ed. A zubin builder
-  (an external pointer with a finalizer) is for `.npz`, whose size is not known
-  up front.
+  at their final size and `PROTECT`ed; scratch is `R_alloc()`ed. There is no external
+  pointer or finalizer anywhere (see `.agents/assurance.md`: no lifecycle
+  objects).
 - **C never calls `Rf_error()`.** Statuses come back by enumerator name and
   `R/conditions.R` raises; `zubin_error` from `bin_unpack()` and `bin_pack()` is
   re-raised as the matching `zunpy_` class.

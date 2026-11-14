@@ -1,0 +1,20 @@
+# Holds .agents/assurance.md to .claude/shared/assurance.md: a malformed
+# file, a `done` no workflow backs, or a gap with no issue fails. A tracked
+# gap passes. Also reports jobs of this package's own workflows that are not
+# gated through changes.yml (`ungated-jobs: warn` until they are).
+on:
+  pull_request:
+  workflow_dispatch:
+
+name: assurance
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  assurance:
+    uses: pedrobtz/r-actions/.github/workflows/assurance.yml@v1
