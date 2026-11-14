@@ -86,6 +86,23 @@ npy_decode <- function(x, names = NULL, order = c("R", "file"),
                        max_dims = 32, max_members = 10000) {
   call <- sys.call()
   znp_check_raw(x, call = call)
+  opts <- znp_decode_options(order, int64, na, strings, encoding, datetime,
+                             max_size, max_header, max_dims, max_members,
+                             call)
+  znp_decode(x, names, opts, call)
+}
+
+# npy_decode()'s arguments, each matched or checked once (#25), whichever
+# path reads the bytes: npy_decode() itself, and both of npy_read()'s.
+znp_decode_options <- function(order = c("R", "file"),
+                               int64 = c("double", "integer64"),
+                               na = c("error", "allow"),
+                               strings = c("character", "raw"),
+                               encoding = c("UTF-8", "latin1", "bytes"),
+                               datetime = c("convert", "integer64"),
+                               max_size = 2 * 1024^3, max_header = 10000,
+                               max_dims = 32, max_members = 10000,
+                               call = NULL) {
   opts <- list(
     order = znp_match(order, c("R", "file"), "order", call),
     int64 = znp_match(int64, c("double", "integer64"), "int64", call),
@@ -95,8 +112,19 @@ npy_decode <- function(x, names = NULL, order = c("R", "file"),
                          call),
     datetime = znp_match(datetime, c("convert", "integer64"), "datetime",
                          call),
-    max_size = max_size, max_header = max_header, max_dims = max_dims
+    max_size = znp_check_count(max_size, "max_size", 0, 2^53, call),
+    max_header = znp_check_count(max_header, "max_header", 0, 2^32 - 1, call),
+    max_dims = znp_check_count(max_dims, "max_dims", 0, 64, call)
   )
+  opts$max_members <- znp_check_count(max_members, "max_members", 0, 2^53,
+                                      call)
+  opts
+}
+
+# Raw bytes decoded with checked options: a .npz or one .npy.
+znp_decode <- function(x, names, opts, call) {
+  max_members <- opts$max_members
+  opts$max_members <- NULL
   # PK: a ZIP archive, so a .npz (D2).
   if (length(x) >= 2 && x[1] == as.raw(0x50) && x[2] == as.raw(0x4b)) {
     return(znp_npz_decode(x, names, max_members, opts, call))
