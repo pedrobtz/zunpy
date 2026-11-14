@@ -104,7 +104,9 @@ without read permission).</p></dd>
 gives its byte order as native (<code>=</code>) or not at all, which NumPy never
 writes and which is read as little-endian; and <code>zunpy_alignment</code> when
 the data starts at a multiple of 16 bytes but not of 64, as files from
-NumPy before 1.14 and from other writers do.</p>
+NumPy before 1.14 and from other writers do; and <code>zunpy_na_replaced</code>
+when <code><a href="npy_encode.html">npy_encode()</a></code> writes a logical <code>NA</code> as <code>False</code> under
+<code>na = "allow"</code>.</p>
     </div>
 
     <div class="section level2">

@@ -82,11 +82,11 @@ npy_header(npy_encode(c("a", "bb"), dtype = "|S"))$descr
 #> [1] "|S2"
 ```
 
-### Exact or refused
+### Integers: exact or refused
 
-A value is converted exactly or not at all. A 64-bit integer beyond 2^53
-does not fit a double without rounding, so it is an error unless it is
-read as `integer64`:
+An integer is converted exactly or not at all. A 64-bit integer beyond
+2^53 does not fit a double without rounding, so it is an error unless it
+is read as `integer64`:
 
 ``` r
 
@@ -106,6 +106,16 @@ Narrowing on write refuses what does not fit, naming the element:
 try(npy_encode(c(1, 2, 300), dtype = "|u1"))
 #> Error in npy_encode(c(1, 2, 300), dtype = "|u1") : 
 #>   element 3 does not fit dtype '|u1'
+```
+
+Floats are the exception, as they are in NumPy: a narrower float dtype,
+asked for explicitly, rounds to the nearest value it holds, and a value
+past the largest half float becomes `Inf`:
+
+``` r
+
+npy_decode(npy_encode(c(0.1, 1e6), dtype = "<f2"))
+#> [1] 0.09997559        Inf
 ```
 
 `NA` goes only where the type has a place for it. A double `NA` is a NaN

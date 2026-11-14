@@ -5,8 +5,9 @@ Read and write the array files of 'NumPy', '.npy' for one array and
 arrays and data frames, without 'Python'. Numeric, boolean, complex,
 half-precision, string, date-time and structured types are supported.
 Every header is parsed and checked against the bytes present before
-anything is allocated, and every value is converted exactly or refused;
-writing is deterministic and matches the output of 'NumPy'.
+anything is allocated. An integer that does not fit its target is
+refused, never wrapped; writing is deterministic and matches the output
+of 'NumPy'.
 
 ## See also
 

@@ -139,11 +139,13 @@ is checked against its CRC-32.</p>
 <p>Types map as follows: <code>b1</code> to logical; <code>i1</code>, <code>u1</code>, <code>i2</code>, <code>u2</code> and <code>i4</code>
 to integer; <code>u4</code>, <code>f2</code>, <code>f4</code> and <code>f8</code> to double; <code>i8</code> and <code>u8</code> to double,
 or to <code>integer64</code> with <code>int64 = "integer64"</code>; <code>c8</code> and <code>c16</code> to complex.
-Every value is converted exactly or refused: an <code>i4</code> of <code>-2^31</code> is R's
+Every number is converted exactly or refused: an <code>i4</code> of <code>-2^31</code> is R's
 <code>NA_integer_</code>, so it is an error unless <code>na = "allow"</code>, and a 64-bit
 integer beyond <code>2^53</code> in magnitude, which a double cannot hold exactly,
-is an error unless <code>int64 = "integer64"</code>. Structured dtypes are not
-supported yet.</p>
+is an error unless <code>int64 = "integer64"</code>. A structured dtype (a record
+array) becomes a data frame, one column per field and one per element
+of a subarray field (<code>a.1</code>, <code>a.2</code>, ...); one whose expanded names would
+repeat is refused as <code>zunpy_unrepresentable</code>.</p>
 <p>Strings: <code>S&lt;n&gt;</code> (bytes) and <code>U&lt;n&gt;</code> (code points) become character
 vectors in UTF-8, with the trailing NULs NumPy pads with removed. <code>S&lt;n&gt;</code>
 bytes are decoded as <code>encoding</code> says, and <code>strings = "raw"</code> returns each

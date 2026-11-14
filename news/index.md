@@ -37,8 +37,9 @@ First release.
   and `difftime`, or as `integer64` counts, and are written from them.
 - [`npy_encode()`](https://pedrobtz.github.io/zunpy/reference/npy_encode.md)
   writes an R vector, matrix or array as a `.npy` file in a raw vector,
-  byte-identical to `numpy.save()`; `dtype` narrows exactly or refuses,
-  and `order` chooses Fortran or C order.
+  byte-identical to `numpy.save()`; `dtype` narrows an integer exactly
+  or refuses it and rounds a float to nearest, and `order` chooses
+  Fortran or C order.
   [`npy_dtype()`](https://pedrobtz.github.io/zunpy/reference/npy_dtype.md)
   gives the default dtype.
 - [`npy_decode()`](https://pedrobtz.github.io/zunpy/reference/npy_decode.md)
