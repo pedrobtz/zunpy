@@ -150,7 +150,7 @@ znp_decode_npy <- function(x, order, int64, na, strings, encoding, datetime,
   }
   znp_header_warnings(res, call)
   if (is.na(res$descr)) {
-    return(znp_records(res$value, res$shape, int64, datetime))
+    return(znp_records(res$value, res$shape, int64, datetime, call))
   }
   znp_classify(res$value, res$descr, int64, datetime)
 }
@@ -158,7 +158,18 @@ znp_decode_npy <- function(x, order, int64, na, strings, encoding, datetime,
 # A structured array as a data frame (design section 6.3): one column per
 # field, or per element of a subarray field; one row per record, in R's
 # order; `npy_shape` when the array is not 1-d.
-znp_records <- function(value, shape, int64, datetime) {
+znp_records <- function(value, shape, int64, datetime, call = NULL) {
+  # A subarray field a gives columns a.1, a.2, ...; a dtype that also has a
+  # field named a.1 is valid NumPy but has no data frame with those names,
+  # and renaming would hide it, so it is refused (#25, design 6.3).
+  dup <- anyDuplicated(value[[2]])
+  if (dup) {
+    znp_unrepresentable(sprintf(
+      paste("the column name '%s' occurs twice once subarray fields are",
+            "expanded (a field 'a' of shape (n,) gives a.1 to a.n)"),
+      value[[2]][dup]
+    ), call = call)
+  }
   cols <- Map(function(col, descr) znp_classify(col, descr, int64, datetime),
               value[[1]], value[[3]])
   names(cols) <- value[[2]]

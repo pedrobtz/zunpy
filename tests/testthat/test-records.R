@@ -143,3 +143,19 @@ test_that("#25 a bad structured value is located in file order, at its byte", {
   d <- "{'descr': [('a', '<i4'), ('b', '<U1')], 'fortran_order': False, 'shape': (2,), }"
   expect_identical(locate(d, c(u4(1), ok, u4(2), bad)), list(index = 2, at = 12))
 })
+
+test_that("#25 expanded subarray names that collide are refused", {
+  d <- "{'descr': [('a', '<i4', (2,)), ('a.1', '<i4')], 'fortran_order': False, 'shape': (1,), }"
+  expect_zunpy_error(npy_decode(npy_header_bytes(d, raw(12))),
+                     "zunpy_unrepresentable")
+  d <- "{'descr': [('a.2', '<i4'), ('a', '<i4', (2,))], 'fortran_order': False, 'shape': (1,), }"
+  expect_zunpy_error(npy_decode(npy_header_bytes(d, raw(12))),
+                     "zunpy_unrepresentable")
+})
+
+test_that("#25 a zero-length subarray field gives no column", {
+  d <- "{'descr': [('a', '<i4', (0,)), ('b', '<i4')], 'fortran_order': False, 'shape': (2,), }"
+  r <- npy_decode(npy_header_bytes(d, put_le(raw(8), 0, 7, 4)))
+  expect_named(r, "b")
+  expect_identical(r$b, c(7L, 0L))
+})
