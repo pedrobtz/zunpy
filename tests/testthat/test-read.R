@@ -199,3 +199,15 @@ test_that("#25 the direct and general paths give the same value", {
     }
   }
 })
+
+test_that("#25 an unopened connection that cannot be opened is zunpy_io_error", {
+  dir <- withr::local_tempdir()
+  missing <- file.path(dir, "no", "such", "dir", "x.npy")
+  con <- file(missing)
+  on.exit(try(close(con), silent = TRUE), add = TRUE)
+  expect_no_warning(e <- expect_zunpy_error(npy_write(1:3, con), "zunpy_io_error"))
+  expect_false(file.exists(missing))
+  rcon <- file(missing)
+  on.exit(try(close(rcon), silent = TRUE), add = TRUE)
+  expect_no_warning(expect_zunpy_error(npy_read(rcon), "zunpy_io_error"))
+})

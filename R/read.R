@@ -178,7 +178,13 @@ npy_write <- function(x, file, ...) {
     con <- tryCatch(file(file, "wb"), warning = fail, error = fail)
     close_it <- TRUE
   } else if (!isOpen(con)) {
-    open(con, "wb")
+    # As for a path: a connection that cannot be opened is zunpy_io_error
+    # with the reason as its message (#25), not a base warning and error.
+    fail <- function(e) {
+      znp_io_error(sprintf("cannot open the connection for writing: %s",
+                           conditionMessage(e)), call = call)
+    }
+    tryCatch(open(con, "wb"), warning = fail, error = fail)
     close_it <- TRUE
   } else if (!identical(summary(con)$text, "binary")) {
     znp_invalid_argument("file", "an open connection must be in binary mode",
