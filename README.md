@@ -13,9 +13,12 @@ R vectors, matrices, arrays, data frames and lists, without Python.
   `datetime64` and `timedelta64`, and structured dtypes (record arrays),
   in either byte order and either memory order. Object arrays and long
   doubles have no R counterpart and are refused.
-- **Exact or refused.** A value that does not fit its target is an error
-  naming its index, never a rounding or a wrap: an `int64` beyond 2^53
+- **Integers exact or refused.** An integer that does not fit its target
+  is an error naming its index, never a wrap: an `int64` beyond 2^53
   needs `int64 = "integer64"`, and `NA` goes only where it has a place.
+  A float narrowed on request (`dtype = "<f4"` or `"<f2"`) rounds to
+  nearest, and becomes `Inf` past the largest `<f2`, as in NumPy;
+  `M8[ns]` reads as the nearest double unless `datetime = "integer64"`.
 - **Safe with untrusted files.** The header is parsed by a grammar, never
   evaluated, and checked whole against the bytes present before anything
   is allocated; `.npz` archives are bounded before any member is

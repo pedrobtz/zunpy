@@ -13,10 +13,13 @@
  * refused value leaves nothing to free. Nothing here calls Rf_error().
  */
 #include <limits.h>
+#include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
 #include <zubin.h>
+#include <zufast/utf8.h>
 
 #include "znp_r.h"
 
@@ -29,7 +32,9 @@ typedef enum {
     ZNP_WRITE_NA,           /* an NA the target cannot hold */
     ZNP_WRITE_RANGE,        /* a value outside the target type */
     ZNP_WRITE_INVALID,      /* a string that is not valid UTF-8 */
-    ZNP_WRITE_TOO_LARGE     /* more bytes than a raw vector holds */
+    ZNP_WRITE_TOO_LARGE,    /* more bytes than a raw vector holds */
+    ZNP_WRITE_SHAPE,        /* a shape that is not whole, or not the length (#25) */
+    ZNP_WRITE_NAME          /* a field name that is not valid UTF-8 (#25) */
 } znp_write_status;
 
 static const char *write_status_name(znp_write_status st)
@@ -40,6 +45,8 @@ static const char *write_status_name(znp_write_status st)
     case ZNP_WRITE_RANGE:     return "ZNP_WRITE_RANGE";
     case ZNP_WRITE_INVALID:   return "ZNP_WRITE_INVALID";
     case ZNP_WRITE_TOO_LARGE: return "ZNP_WRITE_TOO_LARGE";
+    case ZNP_WRITE_SHAPE:     return "ZNP_WRITE_SHAPE";
+    case ZNP_WRITE_NAME:      return "ZNP_WRITE_NAME";
     }
     return "ZNP_ERR_UNKNOWN";
 }
@@ -282,6 +289,46 @@ static void set_fault(SEXP out, zb_status st, size_t bad, int column)
     SET_VECTOR_ELT(out, 4, Rf_ScalarInteger(column >= 0 ? column + 1 : NA_INTEGER));
 }
 
+/* A status with no element index, and the 1-based column or NA. */
+static SEXP write_refusal(SEXP out, znp_write_status ws, int column)
+{
+    SET_VECTOR_ELT(out, 0, Rf_mkString(write_status_name(ws)));
+    SET_VECTOR_ELT(out, 4, Rf_ScalarInteger(column >= 0 ? column + 1 : NA_INTEGER));
+    return out;
+}
+
+/* The shape R passed, as counts: 1 to ZNP_MAX_DIMS_CAP doubles, each a
+   whole number in [0, 2^53], whose product fits a raw vector's length.
+   R checks the same before calling (#25); this check is what the writes
+   below are bounded by, so a forged object or attribute that slips past R
+   is a status, never a write past the allocation. Returns 0 and fills
+   shape, *k and *n, or -1. */
+static int read_shape(SEXP shape_r, uint64_t *shape, int *k, size_t *n)
+{
+    if (TYPEOF(shape_r) != REALSXP || XLENGTH(shape_r) < 1 || XLENGTH(shape_r) > ZNP_MAX_DIMS_CAP)
+        return -1;
+    *k = (int)XLENGTH(shape_r);
+    int zero = 0;
+    for (int j = 0; j < *k; j++) {
+        double d = REAL(shape_r)[j];
+        if (!(d >= 0 && d <= 9007199254740992.0 && d == floor(d)))
+            return -1;
+        shape[j] = (uint64_t)d;
+        zero |= shape[j] == 0;
+    }
+    uint64_t prod = 1;
+    if (zero)
+        prod = 0;
+    else
+        for (int j = 0; j < *k; j++) {
+            if (prod > (uint64_t)R_XLEN_T_MAX / shape[j])
+                return -1;
+            prod *= shape[j];
+        }
+    *n = (size_t)prod;
+    return 0;
+}
+
 /* spec: list(kind, width, unit, scale); shape: R's dims as doubles (the
    logical shape); opts: c(order_c, na_allow, is_int64). Returns
    list(status, index, value, replaced). */
@@ -297,14 +344,18 @@ SEXP zunpy_encode(SEXP x, SEXP spec, SEXP shape_r, SEXP opts)
     t.na_allow = INTEGER(opts)[1];
     t.is_int64 = INTEGER(opts)[2];
 
-    int k = (int)XLENGTH(shape_r);
+    int k = 0;
     uint64_t shape[ZNP_MAX_DIMS_CAP];
-    int nontrivial = 0;
-    for (int j = 0; j < k; j++) {
-        shape[j] = (uint64_t)REAL(shape_r)[j];
-        nontrivial += shape[j] > 1;
+    size_t n = 0;
+    if (read_shape(shape_r, shape, &k, &n) != 0 || n != (size_t)XLENGTH(x)) {
+        SEXP out = PROTECT(result_list());
+        write_refusal(out, ZNP_WRITE_SHAPE, -1);
+        UNPROTECT(1);
+        return out;
     }
-    size_t n = (size_t)XLENGTH(x);
+    int nontrivial = 0;
+    for (int j = 0; j < k; j++)
+        nontrivial += shape[j] > 1;
 
     /* NumPy's own rule: an array both C- and Fortran-contiguous (empty, or
        with at most one dimension above 1) is written as C order, and so has
@@ -407,6 +458,36 @@ SEXP zunpy_encode_records(SEXP cols, SEXP specs, SEXP names, SEXP shape_r,
 {
     int ncol = (int)XLENGTH(cols);
     int order_c = INTEGER(opts)[0];
+
+    /* Every size the packing below relies on, checked here and not only in
+       R (#25): the shape, each column's length against it, and each name. */
+    int k = 0;
+    uint64_t shape[ZNP_MAX_DIMS_CAP];
+    size_t n = 0;
+    {
+        SEXP out = PROTECT(result_list());
+        if (TYPEOF(cols) != VECSXP || TYPEOF(specs) != VECSXP || TYPEOF(names) != STRSXP ||
+            TYPEOF(int64s) != LGLSXP || XLENGTH(specs) != ncol || XLENGTH(names) != ncol ||
+            XLENGTH(int64s) != ncol || read_shape(shape_r, shape, &k, &n) != 0) {
+            write_refusal(out, ZNP_WRITE_SHAPE, -1);
+            UNPROTECT(1);
+            return out;
+        }
+        for (int c = 0; c < ncol; c++) {
+            if ((size_t)XLENGTH(VECTOR_ELT(cols, c)) != n) {
+                write_refusal(out, ZNP_WRITE_SHAPE, c);
+                UNPROTECT(1);
+                return out;
+            }
+            SEXP nm = STRING_ELT(names, c);
+            if (nm == NA_STRING || LENGTH(nm) == 0 || !zuf_utf8_valid(CHAR(nm), (size_t)LENGTH(nm))) {
+                write_refusal(out, ZNP_WRITE_NAME, c);
+                UNPROTECT(1);
+                return out;
+            }
+        }
+        UNPROTECT(1);
+    }
     znp_target *t = (znp_target *)(void *)R_alloc(ncol ? (size_t)ncol : 1, sizeof(znp_target));
     size_t *off = (size_t *)(void *)R_alloc(ncol ? (size_t)ncol : 1, sizeof(size_t));
     size_t rs = 0, need = 64;
@@ -431,15 +512,9 @@ SEXP zunpy_encode_records(SEXP cols, SEXP specs, SEXP names, SEXP shape_r,
         need += 4 * (size_t)LENGTH(STRING_ELT(names, c)) + 64;
     }
 
-    int k = (int)XLENGTH(shape_r);
-    uint64_t shape[ZNP_MAX_DIMS_CAP];
     int nontrivial = 0;
-    size_t n = 1;
-    for (int j = 0; j < k; j++) {
-        shape[j] = (uint64_t)REAL(shape_r)[j];
+    for (int j = 0; j < k; j++)
         nontrivial += shape[j] > 1;
-        n *= (size_t)shape[j];
-    }
     int layout_matters = k >= 2 && n > 0 && nontrivial >= 2;
     int fortran = layout_matters && !order_c;
     int permute = layout_matters && order_c;

@@ -115,7 +115,7 @@ test_that("re-encoding string and time fixtures gives NumPy's bytes", {
 })
 
 test_that("strings: width, NA, S encodings", {
-  x <- c("a", "héllo", "\U0001F600")
+  x <- c("a", "h\u00e9llo", "\U0001F600")
   expect_identical(npy_dtype(x), "<U")
   expect_identical(npy_header(npy_encode(x))$descr, "<U5")
   expect_identical(npy_header(npy_encode(""))$descr, "<U1")
@@ -126,9 +126,9 @@ test_that("strings: width, NA, S encodings", {
   e <- expect_zunpy_error(npy_encode(c("a", NA)), "zunpy_na_error")
   expect_identical(e$index, 2)
   expect_identical(npy_decode(npy_encode(c("a", NA), na = "allow")), c("a", ""))
-  l <- npy_encode("café", dtype = "|S", encoding = "latin1")
+  l <- npy_encode("caf\u00e9", dtype = "|S", encoding = "latin1")
   expect_identical(npy_decode(l, strings = "raw"), list(charToRaw("caf\xe9")))
-  expect_zunpy_error(npy_encode("日", dtype = "|S", encoding = "latin1"),
+  expect_zunpy_error(npy_encode("\u65e5", dtype = "|S", encoding = "latin1"),
                      "zunpy_range_error")
   expect_identical(npy_decode(npy_encode(factor(c("b", "a")))), c("b", "a"))
   expect_zunpy_error(npy_encode("a", dtype = "<f8"), "zunpy_invalid_argument")
@@ -167,7 +167,7 @@ test_that("dates and times: exact or refused", {
 
 test_that("round trips over generated strings and times", {
   withr::local_seed(4)
-  pool <- c("", "a", "héllo", "日本", "\U0001F600", "tab\tq",
+  pool <- c("", "a", "h\u00e9llo", "\u65e5\u672c", "\U0001F600", "tab\tq",
             "x y")
   for (shape in list(5L, c(2L, 3L), c(3L, 0L), c(2L, 2L, 2L))) {
     for (order in c("F", "C")) {

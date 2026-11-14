@@ -1,10 +1,12 @@
 # zunpy — Design
 
-- **Status:** Draft, 2026-10-08. Adopted from
+- **Status:** Implemented, 2026-11-14: every section describes the 0.1.0
+  code, amended where a stage or the release review (#25) settled a
+  detail. Adopted 2026-10-08 from
   [RFC 0003](https://github.com/pedrobtz/packages/blob/main/rfcs/0003-zunpy-numpy-arrays.md)
   (2026-10-07, `pedrobtz/packages@077bb16`) as the package's own
-  specification. No code exists yet; the roadmap's **Status:** lines say
-  what does. Every statement here is a decision; things not yet decided
+  specification; the roadmap's **Status:** lines say when each part
+  landed. Every statement here is a decision; things not yet decided
   live in §18 and nowhere else. Amend this file in the same commit as the
   code that changes it. [roadmap.md](roadmap.md) sequences the work; its
   section references (§) point here.
@@ -431,6 +433,15 @@ record by record through one temporary; `order = "file"` keeps the file's
 order and reverses `npy_shape`. A data frame's rows are an R integer, so
 more than `2^31 - 1` records are `zunpy_unrepresentable`.
 
+*Settled 2026-11-14 (#25).* Expanded names that repeat, as in
+`[('a', '<i4', (2,)), ('a.1', '<i4')]`, are `zunpy_unrepresentable`:
+valid NumPy, but no data frame holds two columns of one name, and renaming
+one would hide the clash and break the round trip. A zero-length subarray
+field gives no column. A failing value is reported at its record in file
+order (`index`, 1-based) and at its own byte (`offset`), the field's and
+the subarray element's offset included, whatever order the rows are
+returned in.
+
 ### 6.4 Memory order
 
 NumPy's default is C order (last index fastest). R's is Fortran order
@@ -544,6 +555,15 @@ reproduce. A version 1.0 header stores Latin-1 names as Latin-1 bytes. A
 data frame carrying `npy_shape` is written with that shape, in Fortran
 order, or C order on request. At most 1,024 columns, the read side's
 `max_fields`.
+
+*Settled 2026-11-14 (#25).* R objects are not a memory-safety boundary, so
+the writer checks every size it relies on twice: in R, with
+`zunpy_invalid_argument` (every column `nrow(x)` long; `npy_shape` 1 to 64
+whole counts in `[0, 2^53]` whose product, taken without overflow, is the
+row count; field names valid UTF-8), and in C before any write, as a
+status (the shape, each column's length against it, each name). A forged
+data frame or attribute that slips past R is then refused, never written
+past the allocation.
 
 ### 7.4 Known lossy conversions
 
@@ -785,7 +805,12 @@ is then byte-identical to NumPy's for the same members (`test-npz.R`); a
 deflated one is not, since miniz and zlib compress differently. A member
 declaring zero bytes is inflated with a cap of one byte, since zukomp reads
 `max_output = 0` as no cap. Member names are UTF-8 when the entry says so
-or when they are valid UTF-8, else Latin-1. Two members with one key are
+or when they are valid UTF-8, else Latin-1; a name with a NUL byte, or
+flagged as UTF-8 and not, is `zunpy_parse_error` (#25). Writing, a key
+must be valid UTF-8 and its stored name (the key and `.npy`) at most
+65,535 bytes, the ZIP field's 16 bits; R refuses longer keys as
+`zunpy_invalid_argument` and the archive builder writes nothing for one
+(*settled 2026-11-14, #25*). Two members with one key are
 `zunpy_invalid_error`; a member that is not a `.npy` is
 `zunpy_parse_error` naming it. Encryption, methods other than stored and
 DEFLATE, and split archives are `zunpy_unsupported_type`.
@@ -964,10 +989,12 @@ that is a valid Python expression but not in §9.2 is a parse error.
   they compare zunpy with NumPy without R and Python in one process, and
   `R CMD check` needs no Python. From Stage 3, R writes files for
   `np.load()` to read in the same job. `reticulate` is not used.
-- **Round trip as a property** (§7.4): 300 generated arrays over every
-  dtype, shape of 0 to 4 dimensions including zero-length dimensions, both
-  orders, with `NA`, `NaN`, `-0`, infinities, the empty string and a
-  string ending in `U+0000`; each encoded twice (identical bytes) and
+- **Round trip as a property** (§7.4): 64 generated arrays (four R types,
+  eight shapes of 1 to 4 dimensions including zero-length dimensions, both
+  orders) in `test-encode.R`, with strings and times in
+  `test-text-time.R` (corrected 2026-11-14 from the 300 first planned),
+  with `NA`, `NaN`, `-0`, infinities, the empty string and a string
+  ending in `U+0000`; each encoded twice (identical bytes) and
   decoded back (`identical()`, modulo the documented losses).
 - **The header parser is fuzzed** with libFuzzer under ASan and UBSan,
   seeded from every fixture header and NumPy's own test-suite headers;

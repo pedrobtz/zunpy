@@ -72,11 +72,13 @@ is checked against its CRC-32.
 Types map as follows: \code{b1} to logical; \code{i1}, \code{u1}, \code{i2}, \code{u2} and \code{i4}
 to integer; \code{u4}, \code{f2}, \code{f4} and \code{f8} to double; \code{i8} and \code{u8} to double,
 or to \code{integer64} with \code{int64 = "integer64"}; \code{c8} and \code{c16} to complex.
-Every value is converted exactly or refused: an \code{i4} of \code{-2^31} is R's
+Every number is converted exactly or refused: an \code{i4} of \code{-2^31} is R's
 \code{NA_integer_}, so it is an error unless \code{na = "allow"}, and a 64-bit
 integer beyond \code{2^53} in magnitude, which a double cannot hold exactly,
-is an error unless \code{int64 = "integer64"}. Structured dtypes are not
-supported yet.
+is an error unless \code{int64 = "integer64"}. A structured dtype (a record
+array) becomes a data frame, one column per field and one per element
+of a subarray field (\code{a.1}, \code{a.2}, ...); one whose expanded names would
+repeat is refused as \code{zunpy_unrepresentable}.
 
 Strings: \verb{S<n>} (bytes) and \verb{U<n>} (code points) become character
 vectors in UTF-8, with the trailing NULs NumPy pads with removed. \verb{S<n>}

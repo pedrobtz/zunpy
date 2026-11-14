@@ -40,36 +40,64 @@ npy_read <- function(file, ..., names = NULL, max_size = 2 * 1024^3) {
   # names after ...: before it, npy_read(f, na = "allow") would match na to
   # names partially.
   call <- sys.call()
-  direct <- znp_read_direct(file, names, list(...), max_size, call)
+  # Every argument checked once, before a path is chosen (#25): the direct
+  # path and the general one see the same options and refuse the same.
+  args <- znp_read_dots(list(...), call)
+  opts <- do.call(znp_decode_options,
+                  c(args, list(max_size = max_size, call = call)),
+                  quote = TRUE)
+  direct <- znp_read_direct(file, names, opts, call)
   if (!is.null(direct)) {
     return(direct)
   }
-  bytes <- znp_read_bounded(file, max_size, call)
-  npy_decode(bytes, names = names, ..., max_size = max_size)
+  bytes <- znp_read_bounded(file, opts$max_size, call)
+  znp_decode(bytes, names, opts, call)
+}
+
+# The arguments of npy_read()'s ..., as npy_decode() would match them: each
+# named, by its full name or a unique prefix, at most once. Anything else
+# is zunpy_invalid_argument, never dropped (#25).
+znp_read_dots <- function(args, call) {
+  if (length(args) == 0) {
+    return(args)
+  }
+  known <- c("order", "int64", "na", "strings", "encoding", "datetime",
+             "max_header", "max_dims", "max_members")
+  nm <- names(args)
+  if (is.null(nm) || any(!nzchar(nm))) {
+    znp_invalid_argument("...", paste(
+      "arguments in `...` must be named; they are npy_decode()'s",
+      paste0("`", known, "`", collapse = ", ")
+    ), call = call)
+  }
+  full <- known[pmatch(nm, known, duplicates.ok = TRUE)]
+  if (anyNA(full) || anyDuplicated(full)) {
+    bad <- if (anyNA(full)) nm[is.na(full)][1] else nm[anyDuplicated(full)]
+    znp_invalid_argument("...", sprintf(
+      "`%s` is not an argument of npy_read(), or is given twice; `...` takes %s",
+      bad, paste0("`", known, "`", collapse = ", ")
+    ), call = call)
+  }
+  names(args) <- full
+  args
 }
 
 # The fast path of design section 16 for a path: a little-endian f8, i4 or
 # c16 array that needs no permutation is read by readBin() straight into
 # the result, once its header has been checked and the file's size found
 # to be exactly what the header declares. NULL when it does not apply, and
-# the general path reads the file.
-znp_read_direct <- function(file, names, args, max_size, call) {
+# the general path reads the file. opts are checked already.
+znp_read_direct <- function(file, names, opts, call) {
   if (!is.null(names) || !is.character(file) || length(file) != 1L ||
       is.na(file) || grepl("^(https?|ftps?|file)://", file, ignore.case = TRUE) ||
       !file.exists(file) || dir.exists(file) || !isTRUE(.Call(zunpy_fast_path))) {
     return(NULL)
   }
-  known <- c("order", "int64", "na", "strings", "encoding", "datetime",
-             "max_header", "max_dims", "max_members")
-  if (!all(names(args) %in% known) || "max_members" %in% names(args)) {
-    return(NULL)
-  }
-  max_size <- znp_check_count(max_size, "max_size", 0, 2^53, call)
   size <- file.size(file)
-  if (size > max_size || size < 16) {
+  if (is.na(size) || size > opts$max_size || size < 16) {
     return(NULL)
   }
-  max_header <- if (is.null(args$max_header)) 10000 else args$max_header
+  max_header <- opts$max_header
   head <- znp_read_header_bytes(file, max_header, call)
   if (head[1] != as.raw(0x93)) {
     return(NULL)
@@ -81,15 +109,12 @@ znp_read_direct <- function(file, names, args, max_size, call) {
     return(NULL)
   }
   k <- length(h$shape)
-  order <- if (is.null(args$order)) "R" else args$order
   count <- prod(h$shape)
-  max_dims <- if (is.null(args$max_dims)) 32 else args$max_dims
-  if (k > max_dims || (k >= 2 && !h$fortran_order && !identical(order, "file")) ||
+  if (k > opts$max_dims || (k >= 2 && !h$fortran_order && opts$order != "file") ||
       any(h$shape > .Machine$integer.max) && k >= 2 ||
       size != h$data_offset + count * h$itemsize) {
     return(NULL)
   }
-  na <- if (is.null(args$na)) "error" else args$na
   con <- file(file, "rb")
   on.exit(close(con), add = TRUE)
   readBin(con, "raw", h$data_offset)
@@ -101,7 +126,7 @@ znp_read_direct <- function(file, names, args, max_size, call) {
   if (length(value) != count) {
     return(NULL)
   }
-  if (what == "integer" && !identical(na, "allow") && anyNA(value)) {
+  if (what == "integer" && opts$na != "allow" && anyNA(value)) {
     i <- which(is.na(value))[1]
     znp_na_error(as.double(i), sprintf(
       "element %s is NA in R; use `na = \"allow\"` to keep it", i
@@ -153,7 +178,13 @@ npy_write <- function(x, file, ...) {
     con <- tryCatch(file(file, "wb"), warning = fail, error = fail)
     close_it <- TRUE
   } else if (!isOpen(con)) {
-    open(con, "wb")
+    # As for a path: a connection that cannot be opened is zunpy_io_error
+    # with the reason as its message (#25), not a base warning and error.
+    fail <- function(e) {
+      znp_io_error(sprintf("cannot open the connection for writing: %s",
+                           conditionMessage(e)), call = call)
+    }
+    tryCatch(open(con, "wb"), warning = fail, error = fail)
     close_it <- TRUE
   } else if (!identical(summary(con)$text, "binary")) {
     znp_invalid_argument("file", "an open connection must be in binary mode",

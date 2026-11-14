@@ -143,7 +143,16 @@ znp_npz_encode <- function(x, dtype, compress, args, call) {
       "non-empty and unique"
     ), call = call)
   }
-  nm <- enc2utf8(nm)
+  nm <- znp_utf8_names(nm, "x", "an element name", call)
+  # A ZIP entry stores its name's length in 16 bits; the name is the key
+  # and ".npy" (#25).
+  long <- nchar(nm, type = "bytes") > 65535 - 4
+  if (any(long)) {
+    znp_invalid_argument("x", sprintf(
+      "element %d's name is %s bytes in UTF-8; a .npz member name holds at most 65,531 and \".npy\"",
+      which(long)[1], format(nchar(nm[long][1], type = "bytes"), big.mark = ",")
+    ), call = call)
+  }
   # Names become file names in the archive, which another reader may
   # extract (design section 18, Q3).
   bad <- grepl("[/\\\\]|\\x00|^\\.\\.", nm, useBytes = TRUE) | nm %in% "."
@@ -154,9 +163,10 @@ znp_npz_encode <- function(x, dtype, compress, args, call) {
     ), call = call)
   }
   if (!is.null(dtype) && (!is.list(dtype) || is.null(names(dtype)) ||
+                            anyDuplicated(names(dtype)) ||
                             !all(names(dtype) %in% nm))) {
     znp_invalid_argument("dtype", paste(
-      "`dtype` for a list must be a list named by its elements"
+      "`dtype` for a list must be a list named by its elements, each name once"
     ), call = call)
   }
   n <- length(x)

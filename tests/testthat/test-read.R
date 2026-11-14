@@ -146,3 +146,68 @@ test_that("the direct read of a path agrees with the general path", {
   cat("x", file = f, append = TRUE)
   expect_zunpy_error(npy_read(f), "zunpy_parse_error")
 })
+
+test_that("#25 every path refuses the same bad arguments", {
+  dir <- withr::local_tempdir()
+  direct <- file.path(dir, "direct.npy")   # <f8, Fortran order: fast path
+  general <- file.path(dir, "general.npy") # <i2: the general path
+  npy_write(matrix(c(1.5, 2, 3, 4), 2), direct)
+  npy_write(1:4, general, dtype = "<i2")
+  bytes <- readBin(direct, "raw", file.size(direct))
+  bad <- list(
+    list(order = "X"), list(order = NA_character_), list(order = c("file", "R")),
+    list(na = "maybe"), list(int64 = 1), list(strings = "list"),
+    list(encoding = "UTF-16"), list(datetime = TRUE),
+    list(max_header = -1), list(max_header = "10"), list(max_header = NA),
+    list(max_dims = 65), list(max_dims = 1.5), list(max_members = -1),
+    list(max_size = -1), list(max_size = Inf)
+  )
+  for (a in bad) {
+    info <- paste(names(a), format(a[[1]]))
+    expect_zunpy_error(do.call(npy_decode, c(list(bytes), a)),
+                       "zunpy_invalid_argument")
+    for (f in c(direct, general)) {
+      e <- expect_zunpy_error(do.call(npy_read, c(list(f), a)),
+                              "zunpy_invalid_argument")
+      expect_identical(e$arg, names(a), info = info)
+    }
+  }
+})
+
+test_that("#25 npy_read() refuses unknown, unnamed and repeated arguments", {
+  f <- withr::local_tempfile(fileext = ".npy")
+  npy_write(c(1.5, 2), f)
+  expect_zunpy_error(npy_read(f, foo = 1), "zunpy_invalid_argument")
+  expect_zunpy_error(npy_read(f, "file"), "zunpy_invalid_argument")
+  expect_zunpy_error(npy_read(f, order = "R", order = "file"),
+                     "zunpy_invalid_argument")
+  expect_zunpy_error(npy_read(f, max_ = 1), "zunpy_invalid_argument")
+  # A unique prefix is matched, as npy_decode() would match it.
+  expect_identical(npy_read(f, ord = "file"), c(1.5, 2))
+})
+
+test_that("#25 the direct and general paths give the same value", {
+  dir <- withr::local_tempdir()
+  for (x in list(matrix(c(1.5, NA, 3, 4), 2), array(1:24, 2:4),
+                 c(1+2i, NA), 1:3)) {
+    f <- file.path(dir, "x.npy")
+    npy_write(x, f)
+    bytes <- readBin(f, "raw", file.size(f))
+    for (order in c("R", "file")) {
+      expect_identical(npy_read(f, order = order),
+                       npy_decode(bytes, order = order))
+    }
+  }
+})
+
+test_that("#25 an unopened connection that cannot be opened is zunpy_io_error", {
+  dir <- withr::local_tempdir()
+  missing <- file.path(dir, "no", "such", "dir", "x.npy")
+  con <- file(missing)
+  on.exit(try(close(con), silent = TRUE), add = TRUE)
+  expect_no_warning(e <- expect_zunpy_error(npy_write(1:3, con), "zunpy_io_error"))
+  expect_false(file.exists(missing))
+  rcon <- file(missing)
+  on.exit(try(close(rcon), silent = TRUE), add = TRUE)
+  expect_no_warning(expect_zunpy_error(npy_read(rcon), "zunpy_io_error"))
+})

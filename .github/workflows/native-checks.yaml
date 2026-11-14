@@ -45,16 +45,11 @@ jobs:
         ZUNPY_SKIP_HEAVY=true
 
   # Blocking from the first run: the C code is new, so any finding is ours.
-  # zubin and zufast (LinkingTo) are not on CRAN, which is all the rchk image
-  # installs from: github-packages installs them first. Drop them once both
-  # are on CRAN.
+  # zubin and zufast (LinkingTo) come from CRAN, as the rchk image installs.
   rchk:
     uses: pedrobtz/r-actions/.github/workflows/rchk.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
     with:
       fail-on-findings: true
-      github-packages: |
-        pedrobtz/zufast
-        pedrobtz/zubin
 
   # Roadmap Stage 7: the whole suite with the memcpy fast path compiled out,
   # so that a little-endian runner takes the element-by-element path a

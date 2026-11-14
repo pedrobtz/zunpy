@@ -114,11 +114,15 @@ npy_encode <- function(x, dtype = NULL, order = c("F", "C"),
   opts <- as.integer(c(order == "C", na == "allow",
                        source %in% c("integer64", "integer64_time")))
   res <- .Call(zunpy_encode, value, spec, as.double(shape), opts)
-  if (spec[[1]] %in% c("U", "S") && identical(spec[[2]], -1L)) {
+  if (res$status == "ZNP_OK" && spec[[1]] %in% c("U", "S") &&
+        identical(spec[[2]], -1L)) {
     descr <- npy_header(res$value)$descr
   }
   switch(res$status,
     ZNP_OK = NULL,
+    ZNP_WRITE_SHAPE = znp_invalid_argument("x", paste(
+      "the dimensions of `x` do not match its length"
+    ), call = call),
     ZNP_WRITE_INVALID = znp_invalid_argument("x", sprintf(
       "element %s is not valid UTF-8", format(res$index, scientific = FALSE)
     ), call = call),
@@ -325,16 +329,26 @@ znp_encode_records <- function(x, dtype, order, na, encoding, unit, call) {
       "to be a field"
     ), call = call)
   }
-  nm <- enc2utf8(nm)
+  nm <- znp_utf8_names(nm, "x", "a field name", call)
   if (length(x) > 1024) {
     znp_invalid_argument("x", "a data frame of more than 1,024 columns",
                          call = call)
   }
   if (!is.null(dtype) && (!is.character(dtype) || is.null(names(dtype)) ||
+                            anyDuplicated(names(dtype)) ||
                             !all(names(dtype) %in% nm))) {
     znp_invalid_argument("dtype", paste(
       "`dtype` for a data frame must be a character vector named by its",
-      "columns"
+      "columns, each name once"
+    ), call = call)
+  }
+  rows <- nrow(x)
+  lens <- lengths(unclass(x), use.names = FALSE)
+  if (any(lens != rows)) {
+    j <- which(lens != rows)[1]
+    znp_invalid_argument("x", sprintf(
+      "column '%s' has %s values, but the data frame has %s rows", nm[j],
+      format(lens[j], scientific = FALSE), format(rows, scientific = FALSE)
     ), call = call)
   }
   specs <- vector("list", length(x))
@@ -360,9 +374,12 @@ znp_encode_records <- function(x, dtype, order, na, encoding, unit, call) {
   }
   shape <- attr(x, "npy_shape")
   if (is.null(shape)) {
-    shape <- nrow(x)
-  } else if (!is.numeric(shape) || length(shape) > 64 || prod(shape) != nrow(x)) {
-    znp_invalid_argument("x", "`npy_shape` does not match the rows", call = call)
+    shape <- rows
+  } else if (!znp_shape_ok(shape, rows)) {
+    znp_invalid_argument("x", paste(
+      "`npy_shape` must be 1 to 64 whole, non-negative counts whose",
+      "product is the number of rows"
+    ), call = call)
   }
   opts <- as.integer(c(order == "C", na == "allow"))
   res <- .Call(zunpy_encode_records, cols, specs, nm, as.double(shape), opts,
@@ -381,6 +398,12 @@ znp_encode_records <- function(x, dtype, order, na, encoding, unit, call) {
       ZNP_WRITE_INVALID = znp_invalid_argument("x", sprintf(
         "row %s%s is not valid UTF-8", format(res$index, scientific = FALSE), col
       ), call = call),
+      ZNP_WRITE_SHAPE = znp_invalid_argument("x", sprintf(
+        "the shape does not match the rows%s", col
+      ), call = call),
+      ZNP_WRITE_NAME = znp_invalid_argument("x", sprintf(
+        "a field name%s is not valid UTF-8", col
+      ), call = call),
       znp_unrepresentable("the array is too large for one raw vector",
                           call = call)
     )
@@ -391,4 +414,52 @@ znp_encode_records <- function(x, dtype, order, na, encoding, unit, call) {
     ), call = call)
   }
   res$value
+}
+
+# Whether shape (an npy_shape attribute) is 1 to 64 whole counts in
+# [0, 2^53] whose product is rows, the product taken so it cannot overflow
+# or round (#25).
+znp_shape_ok <- function(shape, rows) {
+  if (!is.numeric(shape) || is.object(shape) || length(shape) < 1 ||
+        length(shape) > 64 || anyNA(shape)) {
+    return(FALSE)
+  }
+  shape <- as.double(shape)
+  if (!all(is.finite(shape) & shape >= 0 & shape <= 2^53 &
+             shape == floor(shape))) {
+    return(FALSE)
+  }
+  if (any(shape == 0)) {
+    return(rows == 0)
+  }
+  p <- 1
+  for (s in shape) {
+    p <- p * s
+    if (p > rows) {
+      return(FALSE)
+    }
+  }
+  p == rows
+}
+
+# Names as UTF-8 for a header or an archive, refused when one has no valid
+# UTF-8 form (#25): enc2utf8() passes bytes-encoded strings through as they
+# are, so its result is checked rather than trusted.
+znp_utf8_names <- function(nm, arg, what, call) {
+  bytes <- Encoding(nm) == "bytes"
+  out <- nm
+  out[!bytes] <- enc2utf8(nm[!bytes])
+  if (any(bytes)) {
+    b <- nm[bytes]
+    Encoding(b) <- "UTF-8"
+    out[bytes] <- b
+  }
+  ok <- validUTF8(out)
+  if (!all(ok)) {
+    j <- which(!ok)[1]
+    znp_invalid_argument(arg, sprintf(
+      "%s (number %d) is not valid UTF-8", what, j
+    ), call = call)
+  }
+  out
 }

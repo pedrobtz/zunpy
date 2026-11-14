@@ -1,6 +1,8 @@
 test_that("every condition inherits zunpy_error and carries its fields", {
   e <- tryCatch(znp_invalid_argument("dtype", "bad"), error = identity)
-  expect_s3_class(e, c("zunpy_invalid_argument", "zunpy_error", "error"))
+  for (cl in c("zunpy_invalid_argument", "zunpy_error", "error")) {
+    expect_s3_class(e, cl)
+  }
   expect_identical(e$arg, "dtype")
 
   e <- tryCatch(znp_parse_error(10, "bad"), error = identity)
@@ -43,8 +45,9 @@ test_that("each limit has its own subclass under zunpy_limit_error", {
   )
   for (limit in names(subclasses)) {
     e <- tryCatch(znp_limit_error(limit, 10, "too big"), error = identity)
-    expect_s3_class(e, c(subclasses[[limit]], "zunpy_limit_error",
-                         "zunpy_error"))
+    for (cl in c(subclasses[[limit]], "zunpy_limit_error", "zunpy_error")) {
+      expect_s3_class(e, cl)
+    }
     expect_identical(e$limit, limit)
     expect_identical(e$limit_value, 10)
   }

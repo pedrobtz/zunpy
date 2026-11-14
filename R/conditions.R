@@ -42,7 +42,9 @@
 #' gives its byte order as native (`=`) or not at all, which NumPy never
 #' writes and which is read as little-endian; and `zunpy_alignment` when
 #' the data starts at a multiple of 16 bytes but not of 64, as files from
-#' NumPy before 1.14 and from other writers do.
+#' NumPy before 1.14 and from other writers do; and `zunpy_na_replaced`
+#' when [npy_encode()] writes a logical `NA` as `False` under
+#' `na = "allow"`.
 #'
 #' @name zunpy-conditions
 #' @examples

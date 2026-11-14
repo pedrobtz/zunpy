@@ -45,25 +45,17 @@ same stages.
 
 ## Current state
 
-**2026-11-11: Stages 0–8 done; Version 0.1.0 on `main`, not yet on CRAN.** The
+**2026-11-14: Stages 0–8 done; Version 0.1.0 ready to submit.** The
 whole API of design §5 exists and is documented, with a vignette
 (`vignette("zunpy")`) and a real README: `npy_read()`/`npy_write()` over paths,
 URLs and connections, `npy_decode()`/`npy_encode()` over raw vectors,
 `npy_header()`, `npy_names()`, `npy_dtype()`, `zunpy_info()`. Every dtype of
 §6.1 and §7.1 both ways (structured as data frames, `.npz` as named lists);
 bytes written match `numpy.save()`'s and, stored, `numpy.savez()`'s. Benchmarks
-are in design §16. Stage 9's preparation (#24: `Version: 0.1.0`, the `NEWS.md`
-heading, the README's `install.packages()` line) is merged; the stage (#12)
-stays open. The release is blocked on:
-
-- **#25, the release review**, which blocks 0.1.0 on writer memory safety and
-  correctness gaps (a P0 out-of-bounds write in the structured writer among
-  them).
-- **zubin reaching CRAN.** zufast 0.1.0 (2026-10-21) and zukomp 0.1.0
-  (2026-10-16) are on CRAN; zubin is not (*verified 2026-11-11 against crandb*).
-  Then remove `Remotes:`, raise `LinkingTo: zubin (>= 0.1.0)`, reread
-  `cran-comments.md`, and rebuild and check against the CRAN tarballs (R10.3).
-- **A week of clean nightly fuzzing** (roadmap Stage 8, deviations).
+are in design §16. The release review #25 is fixed, `Remotes:` is gone and
+`LinkingTo: zubin (>= 0.1.0)`: zufast, zukomp and zubin 0.1.0 are all on CRAN
+(*verified 2026-11-14 against crandb*), and the nightly fuzz week is met.
+Stage 9 (#12) stays open until CRAN accepts; what is left is the submission.
 
 After 0.1.0, #30 (safetensors read and write) is planned for v0.2.0.
 
@@ -79,14 +71,12 @@ stages #3–#12 (ten stages, 0 to 9). `.github/scripts/stage-cards.sh` in
 **Status:** line under its heading; status never goes in a heading, and a
 deviation is recorded in that line before its stage closes.
 
-Sibling packages that depend on this one: none. zunpy depends on three siblings
-before CRAN does: `LinkingTo: zubin, zufast` and `Imports: zukomp`, from
-`Remotes: pedrobtz/<pkg>@main` during development. zubin is itself at
-`0.0.0.9000` and may change its C API before its release; zunpy is its first
-consumer, so a break is a zubin issue, not a local workaround. **All three must
-be on CRAN before zunpy is submitted**; `Remotes:` goes at Stage 9 and the
-release is checked against their CRAN tarballs. This adds to `workflow.md`'s
-Pre-flight entry.
+Sibling packages that depend on this one: none. zunpy depends on three
+siblings, `LinkingTo: zubin, zufast` and `Imports: zukomp`, through their CRAN
+releases (`Remotes:` was removed at Stage 9, 2026-11-14, once all
+three were accepted). zunpy is zubin's first consumer, so a break in zubin's C
+API is a zubin issue, not a local workaround. A release of zunpy is checked
+against its providers' CRAN tarballs.
 
 **The bytes zunpy writes are a contract.** Design §8 makes output deterministic
 and identical to NumPy's; changing the header layout, padding, version choice or
@@ -102,8 +92,9 @@ _R_CHECK_SYSTEM_CLOCK_=0 Rscript -e 'devtools::check(cran = TRUE)'
 Rscript -e 'spelling::spell_check_package(".")'
 ```
 
-zubin is not on CRAN: install the providers from the sibling checkouts (`R CMD
-INSTALL ../zufast ../zubin ../zukomp`) or with `pak::pak("pedrobtz/<pkg>")`.
+The providers are on CRAN: `install.packages(c("zubin", "zufast", "zukomp"))`.
+To try a provider's unreleased change, install it from its sibling checkout
+(`R CMD INSTALL ../zubin`).
 roxygen2 must be 8.1.0 or newer.
 
 Gate scripts. The check-phase gates find zufast's headers through
@@ -294,8 +285,14 @@ These add to, or deviate from, `.claude/shared/r-package.md`:
 - **Keep the suite inside the CRAN time budget:** under 15 s. The design and
   roadmap put the 2 GiB and 10^6-member cases behind a `skip_heavy()` on
   `ZUNPY_SKIP_HEAVY`, which `native-checks.yaml` sets for gctorture; as of
-  2026-11-11 no `helper-skip.R` or `skip_heavy()` exists in `tests/testthat/`,
+  2026-11-14 no `helper-skip.R` or `skip_heavy()` exists in `tests/testthat/`,
   so the variable has no effect.
+- **`expect_zunpy_error(expr, class)` asserts each class on its own.**
+  `expect_s3_class(e, c(a, b))` passes when `e` inherits *any* of them, which
+  made every class assertion vacuous until 2026-11-14 (#25); never pass it
+  several classes.
+- **The suite runs in a C locale.** Non-ASCII literals in tests are written as
+  `\u` escapes.
 - `ZUNPY_FORCED_BE` tells `test-info.R` the suite runs in a
   `-DZNP_FORCE_BE_HOST` build.
 - A stage is done when its exit criteria pass in CI on all three platforms. Run

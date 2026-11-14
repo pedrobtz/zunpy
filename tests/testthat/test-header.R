@@ -76,9 +76,9 @@ test_that("versions 2 and 3 have a 4-byte length; 3 is UTF-8", {
   p <- check_dict(npy_dict("'<f8'"), raw(8), version = 2L)
   expect_identical(p$version, c(2L, 0L))
   expect_identical(p$data_offset %% 64, 0)
-  d <- "{'descr': [('é€', '<i4')], 'fortran_order': False, 'shape': (1,), }"
+  d <- "{'descr': [('\u00e9\u20ac', '<i4')], 'fortran_order': False, 'shape': (1,), }"
   p <- check_dict(d, raw(4), version = 3L)
-  expect_identical(p$fields$name, "é€")
+  expect_identical(p$fields$name, "\u00e9\u20ac")
 })
 
 test_that("a Latin-1 header decodes its strings to UTF-8", {
@@ -88,12 +88,12 @@ test_that("a Latin-1 header decodes its strings to UTF-8", {
   )
   i <- which(x == charToRaw("X"))
   x[i] <- as.raw(c(0xe9, 0x41))
-  expect_identical(znp_header_check(x)$fields$name, "éA")
+  expect_identical(znp_header_check(x)$fields$name, "\u00e9A")
 })
 
 test_that("string escapes decode", {
   d <- "{'descr': [('a\\'b\\\\c\\x41\\u00e9\\U0001F600', '<i4')], 'fortran_order': False, 'shape': (1,), }"
-  expect_identical(check_dict(d, raw(4))$fields$name, "a'b\\cAé\U0001F600")
+  expect_identical(check_dict(d, raw(4))$fields$name, "a'b\\cA\u00e9\U0001F600")
 })
 
 test_that("structured dtypes: list form, titles, padding, subarrays", {
@@ -123,4 +123,12 @@ test_that("an empty record list is a zero-width record", {
   p <- check_dict("{'descr': [], 'fortran_order': False, 'shape': (3,), }")
   expect_identical(p$itemsize, 0)
   expect_identical(p$count, 3)
+})
+
+test_that("find_bytes() finds every start, and only starts", {
+  x <- as.raw(c(1, 2, 1, 2, 1, 3))
+  expect_identical(find_bytes(x, as.raw(c(1, 2))), c(1L, 3L))
+  expect_identical(find_bytes(x, as.raw(c(1, 3))), 5L)
+  expect_identical(find_bytes(x, as.raw(c(3, 1))), integer())
+  expect_identical(find_bytes(raw(1), as.raw(c(0, 0))), integer())
 })

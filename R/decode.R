@@ -16,11 +16,13 @@
 #' Types map as follows: `b1` to logical; `i1`, `u1`, `i2`, `u2` and `i4`
 #' to integer; `u4`, `f2`, `f4` and `f8` to double; `i8` and `u8` to double,
 #' or to `integer64` with `int64 = "integer64"`; `c8` and `c16` to complex.
-#' Every value is converted exactly or refused: an `i4` of `-2^31` is R's
+#' Every number is converted exactly or refused: an `i4` of `-2^31` is R's
 #' `NA_integer_`, so it is an error unless `na = "allow"`, and a 64-bit
 #' integer beyond `2^53` in magnitude, which a double cannot hold exactly,
-#' is an error unless `int64 = "integer64"`. Structured dtypes are not
-#' supported yet.
+#' is an error unless `int64 = "integer64"`. A structured dtype (a record
+#' array) becomes a data frame, one column per field and one per element
+#' of a subarray field (`a.1`, `a.2`, ...); one whose expanded names would
+#' repeat is refused as `zunpy_unrepresentable`.
 #'
 #' Strings: `S<n>` (bytes) and `U<n>` (code points) become character
 #' vectors in UTF-8, with the trailing NULs NumPy pads with removed. `S<n>`
@@ -86,6 +88,23 @@ npy_decode <- function(x, names = NULL, order = c("R", "file"),
                        max_dims = 32, max_members = 10000) {
   call <- sys.call()
   znp_check_raw(x, call = call)
+  opts <- znp_decode_options(order, int64, na, strings, encoding, datetime,
+                             max_size, max_header, max_dims, max_members,
+                             call)
+  znp_decode(x, names, opts, call)
+}
+
+# npy_decode()'s arguments, each matched or checked once (#25), whichever
+# path reads the bytes: npy_decode() itself, and both of npy_read()'s.
+znp_decode_options <- function(order = c("R", "file"),
+                               int64 = c("double", "integer64"),
+                               na = c("error", "allow"),
+                               strings = c("character", "raw"),
+                               encoding = c("UTF-8", "latin1", "bytes"),
+                               datetime = c("convert", "integer64"),
+                               max_size = 2 * 1024^3, max_header = 10000,
+                               max_dims = 32, max_members = 10000,
+                               call = NULL) {
   opts <- list(
     order = znp_match(order, c("R", "file"), "order", call),
     int64 = znp_match(int64, c("double", "integer64"), "int64", call),
@@ -95,8 +114,19 @@ npy_decode <- function(x, names = NULL, order = c("R", "file"),
                          call),
     datetime = znp_match(datetime, c("convert", "integer64"), "datetime",
                          call),
-    max_size = max_size, max_header = max_header, max_dims = max_dims
+    max_size = znp_check_count(max_size, "max_size", 0, 2^53, call),
+    max_header = znp_check_count(max_header, "max_header", 0, 2^32 - 1, call),
+    max_dims = znp_check_count(max_dims, "max_dims", 0, 64, call)
   )
+  opts$max_members <- znp_check_count(max_members, "max_members", 0, 2^53,
+                                      call)
+  opts
+}
+
+# Raw bytes decoded with checked options: a .npz or one .npy.
+znp_decode <- function(x, names, opts, call) {
+  max_members <- opts$max_members
+  opts$max_members <- NULL
   # PK: a ZIP archive, so a .npz (D2).
   if (length(x) >= 2 && x[1] == as.raw(0x50) && x[2] == as.raw(0x4b)) {
     return(znp_npz_decode(x, names, max_members, opts, call))
@@ -122,7 +152,7 @@ znp_decode_npy <- function(x, order, int64, na, strings, encoding, datetime,
   }
   znp_header_warnings(res, call)
   if (is.na(res$descr)) {
-    return(znp_records(res$value, res$shape, int64, datetime))
+    return(znp_records(res$value, res$shape, int64, datetime, call))
   }
   znp_classify(res$value, res$descr, int64, datetime)
 }
@@ -130,7 +160,18 @@ znp_decode_npy <- function(x, order, int64, na, strings, encoding, datetime,
 # A structured array as a data frame (design section 6.3): one column per
 # field, or per element of a subarray field; one row per record, in R's
 # order; `npy_shape` when the array is not 1-d.
-znp_records <- function(value, shape, int64, datetime) {
+znp_records <- function(value, shape, int64, datetime, call = NULL) {
+  # A subarray field a gives columns a.1, a.2, ...; a dtype that also has a
+  # field named a.1 is valid NumPy but has no data frame with those names,
+  # and renaming would hide it, so it is refused (#25, design 6.3).
+  dup <- anyDuplicated(value[[2]])
+  if (dup) {
+    znp_unrepresentable(sprintf(
+      paste("the column name '%s' occurs twice once subarray fields are",
+            "expanded (a field 'a' of shape (n,) gives a.1 to a.n)"),
+      value[[2]][dup]
+    ), call = call)
+  }
   cols <- Map(function(col, descr) znp_classify(col, descr, int64, datetime),
               value[[1]], value[[3]])
   names(cols) <- value[[2]]

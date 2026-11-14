@@ -57,3 +57,13 @@ put_le <- function(x, offset, value, width) {
   }
   x
 }
+
+# The 1-based positions where the raw vector pat starts in x.
+find_bytes <- function(x, pat) {
+  k <- length(pat)
+  n <- length(x) - k + 1
+  if (k == 0 || n < 1) return(integer())
+  hit <- rep(TRUE, n)
+  for (j in seq_len(k)) hit <- hit & x[j:(n + j - 1)] == pat[j]
+  which(hit)
+}

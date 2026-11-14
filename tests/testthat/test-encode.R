@@ -139,7 +139,8 @@ test_that("integer64 writes <i8 and reads back", {
 })
 
 test_that("unsupported values and bad arguments are refused", {
-  expect_zunpy_error(npy_encode(list(1)), "zunpy_unsupported_type")
+  # An unnamed list is a .npz without names.
+  expect_zunpy_error(npy_encode(list(1)), "zunpy_invalid_argument")
   expect_zunpy_error(npy_encode(NULL), "zunpy_unsupported_type")
   expect_zunpy_error(npy_encode(1, dtype = "<c16"), "zunpy_invalid_argument")
   expect_zunpy_error(npy_encode(1, dtype = ">f8"), "zunpy_invalid_argument")

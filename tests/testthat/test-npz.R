@@ -40,7 +40,7 @@ test_that("a list writes as NumPy's savez() writes it", {
 })
 
 test_that("compressed archives round-trip; writing is deterministic", {
-  v <- list(a = 1:1000, b = matrix(c(0.5, NA, 2, 3), 2), s = c("x", "yé"),
+  v <- list(a = 1:1000, b = matrix(c(0.5, NA, 2, 3), 2), s = c("x", "y\u00e9"),
             d = data.frame(k = 1:2, t = as.Date("2024-01-01") + 0:1))
   z <- npy_encode(v, compress = TRUE)
   expect_identical(npy_encode(v, compress = TRUE), z)
@@ -137,4 +137,62 @@ test_that("a member that is not a .npy is a parse error naming it", {
              5, list(charToRaw("hello")))
   e <- expect_zunpy_error(npy_decode(z), "zunpy_parse_error")
   expect_identical(e$member, "notes.txt")
+})
+
+test_that("#25 member names: the 65,535-byte bound on the stored name", {
+  # The stored name is the key and ".npy": 65,531 bytes of key is the most.
+  for (len in c(65530, 65531)) {
+    key <- strrep("k", len)
+    z <- npy_encode(setNames(list(1:2), key))
+    expect_identical(npy_names(z), key)
+    expect_identical(npy_decode(z)[[key]], 1:2)
+  }
+  expect_zunpy_error(npy_encode(setNames(list(1:2), strrep("k", 65532))),
+                     "zunpy_invalid_argument")
+  expect_zunpy_error(npy_encode(setNames(list(1:2), strrep("k", 70000))),
+                     "zunpy_invalid_argument")
+  # In bytes, not characters: 21,844 three-byte characters are 65,532 bytes.
+  wide <- strrep("€", 21843)
+  expect_identical(npy_names(npy_encode(setNames(list(1L), wide))), wide)
+  expect_zunpy_error(npy_encode(setNames(list(1L), paste0(wide, "€"))),
+                     "zunpy_invalid_argument")
+})
+
+test_that("#25 the archive builder refuses a name too long to store", {
+  out <- .Call(zunpy:::zunpy_zip_build, strrep("k", 65536), 0L, 0, 0,
+               list(raw()))
+  expect_null(out)
+})
+
+test_that("#25 member and field names must be valid UTF-8", {
+  bad <- "a\xff"
+  Encoding(bad) <- "bytes"
+  expect_zunpy_error(npy_encode(setNames(list(1:2), bad)),
+                     "zunpy_invalid_argument")
+  expect_zunpy_error(npy_encode(setNames(data.frame(1:2), bad)),
+                     "zunpy_invalid_argument")
+  latin <- "caf\xe9"
+  Encoding(latin) <- "latin1"
+  z <- npy_encode(setNames(list(1:2), latin))
+  expect_identical(npy_names(z), "café")
+  r <- npy_decode(npy_encode(setNames(data.frame(1:2), latin)))
+  expect_identical(names(r), "café")
+})
+
+test_that("#25 a hostile member name is a classed error, not a base one", {
+  z <- npy_encode(list(ab = 1:2))
+  at <- find_bytes(z, charToRaw("ab.npy"))
+  expect_length(at, 2)
+  nul <- z
+  for (i in at) nul[i + 1] <- as.raw(0)
+  expect_zunpy_error(npy_names(nul), "zunpy_parse_error")
+  expect_zunpy_error(npy_decode(nul), "zunpy_parse_error")
+  # Flagged as UTF-8 (a non-ASCII name sets the flag), but not UTF-8.
+  z <- npy_encode(setNames(list(1:2), "é"))
+  at <- find_bytes(z, as.raw(c(0xc3, 0xa9)))
+  expect_length(at, 2)
+  bad <- z
+  for (i in at) bad[i + 0:1] <- as.raw(c(0xff, 0xfe))
+  expect_zunpy_error(npy_names(bad), "zunpy_parse_error")
+  expect_zunpy_error(npy_decode(bad), "zunpy_parse_error")
 })

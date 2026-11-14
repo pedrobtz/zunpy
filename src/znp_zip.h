@@ -50,7 +50,8 @@ typedef struct {
     const uint8_t *payload;
 } znp_zip_entry;
 
-/* Writes the archive into data, or with data NULL returns its size. */
+/* Writes the archive into data, or with data NULL returns its size. Each
+   name_len must be at most 0xFFFF: the caller checks (#25). */
 uint64_t znp_zip_write(const znp_zip_entry *e, size_t n, uint8_t *data);
 
 #endif /* ZNP_ZIP_H */
