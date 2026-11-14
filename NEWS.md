@@ -21,8 +21,8 @@ First release.
   `datetime64` and `timedelta64` read as `Date`, `POSIXct` (UTC) and
   `difftime`, or as `integer64` counts, and are written from them.
 * `npy_encode()` writes an R vector, matrix or array as a `.npy` file in a
-  raw vector, byte-identical to `numpy.save()`; `dtype` narrows exactly or
-  refuses, and `order` chooses Fortran or C order. `npy_dtype()` gives the
+  raw vector, byte-identical to `numpy.save()`; `dtype` narrows an integer
+  exactly or refuses it and rounds a float to nearest, and `order` chooses Fortran or C order. `npy_dtype()` gives the
   default dtype.
 * `npy_decode()` reads a `.npy` file held in a raw vector, in either byte
   order and memory order, with the header checked whole before anything is

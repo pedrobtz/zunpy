@@ -9,8 +9,9 @@ Description: Read and write the array files of 'NumPy', '.npy' for one
     matrices, arrays and data frames, without 'Python'. Numeric, boolean,
     complex, half-precision, string, date-time and structured types are
     supported. Every header is parsed and checked against the bytes present
-    before anything is allocated, and every value is converted exactly or
-    refused; writing is deterministic and matches the output of 'NumPy'.
+    before anything is allocated. An integer that does not fit its target is
+    refused, never wrapped; writing is deterministic and matches the output
+    of 'NumPy'.
 License: MIT + file LICENSE
 URL: https://pedrobtz.github.io/zunpy/, https://github.com/pedrobtz/zunpy
 BugReports: https://github.com/pedrobtz/zunpy/issues
@@ -37,4 +38,4 @@ Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-GB
 Roxygen: list(markdown = TRUE)
-Config/roxygen2/version: 8.1.0
+Config/roxygen2/version: 8.1.1

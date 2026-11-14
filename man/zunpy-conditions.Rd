@@ -44,7 +44,9 @@ Warnings inherit from \code{zunpy_warning}: \code{zunpy_byte_order} when a dtype
 gives its byte order as native (\code{=}) or not at all, which NumPy never
 writes and which is read as little-endian; and \code{zunpy_alignment} when
 the data starts at a multiple of 16 bytes but not of 64, as files from
-NumPy before 1.14 and from other writers do.
+NumPy before 1.14 and from other writers do; and \code{zunpy_na_replaced}
+when \code{\link[=npy_encode]{npy_encode()}} writes a logical \code{NA} as \code{False} under
+\code{na = "allow"}.
 }
 \examples{
 e <- tryCatch(
