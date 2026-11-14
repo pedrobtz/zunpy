@@ -40,7 +40,7 @@ test_that("a list writes as NumPy's savez() writes it", {
 })
 
 test_that("compressed archives round-trip; writing is deterministic", {
-  v <- list(a = 1:1000, b = matrix(c(0.5, NA, 2, 3), 2), s = c("x", "yé"),
+  v <- list(a = 1:1000, b = matrix(c(0.5, NA, 2, 3), 2), s = c("x", "y\u00e9"),
             d = data.frame(k = 1:2, t = as.Date("2024-01-01") + 0:1))
   z <- npy_encode(v, compress = TRUE)
   expect_identical(npy_encode(v, compress = TRUE), z)

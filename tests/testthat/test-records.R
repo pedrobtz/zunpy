@@ -17,7 +17,7 @@ test_that("fields keep their R types, subarrays expand, padding goes", {
   expect_named(r, c("id", "x", "name", "flag", "t", "raw"))
   expect_type(r$id, "integer")
   expect_s3_class(r$t, "POSIXct")
-  expect_identical(r$name[2], "héllo")
+  expect_identical(r$name[2], "h\u00e9llo")
   s <- npy_decode(fixture_bytes("rec-subarray.npy"))
   expect_named(s, c("xyz.1", "xyz.2", "xyz.3", "m.1", "m.2", "m.3", "m.4", "k"))
   expect_identical(s$m.2, c(2L, 6L))
@@ -40,9 +40,9 @@ test_that("records with two dimensions carry npy_shape, in R's order", {
 })
 
 test_that("field names in Latin-1 and in UTF-8", {
-  expect_named(npy_decode(fixture_bytes("rec-latin1-name.npy")), "café")
+  expect_named(npy_decode(fixture_bytes("rec-latin1-name.npy")), "caf\u00e9")
   expect_identical(npy_header(fixture_bytes("rec-utf8-name.npy"))$version, "3.0")
-  expect_named(npy_decode(fixture_bytes("rec-utf8-name.npy")), c("€", "b"))
+  expect_named(npy_decode(fixture_bytes("rec-utf8-name.npy")), c("\u20ac", "b"))
 })
 
 test_that("an empty structured array is a data frame with no rows", {
@@ -66,7 +66,7 @@ test_that("a data frame writes as NumPy writes the same record array", {
 
 test_that("data frames round-trip", {
   df <- data.frame(
-    id = 1:3, x = c(1.5, NA, -0), s = c("a", "bé", ""),
+    id = 1:3, x = c(1.5, NA, -0), s = c("a", "b\u00e9", ""),
     d = as.Date("2024-01-01") + 0:2, b = c(TRUE, FALSE, TRUE),
     f = factor(c("u", "v", "u")), stringsAsFactors = FALSE
   )
