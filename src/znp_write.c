@@ -469,18 +469,21 @@ SEXP zunpy_encode_records(SEXP cols, SEXP specs, SEXP names, SEXP shape_r,
         if (TYPEOF(cols) != VECSXP || TYPEOF(specs) != VECSXP || TYPEOF(names) != STRSXP ||
             TYPEOF(int64s) != LGLSXP || XLENGTH(specs) != ncol || XLENGTH(names) != ncol ||
             XLENGTH(int64s) != ncol || read_shape(shape_r, shape, &k, &n) != 0) {
+            write_refusal(out, ZNP_WRITE_SHAPE, -1);
             UNPROTECT(1);
-            return write_refusal(out, ZNP_WRITE_SHAPE, -1);
+            return out;
         }
         for (int c = 0; c < ncol; c++) {
             if ((size_t)XLENGTH(VECTOR_ELT(cols, c)) != n) {
+                write_refusal(out, ZNP_WRITE_SHAPE, c);
                 UNPROTECT(1);
-                return write_refusal(out, ZNP_WRITE_SHAPE, c);
+                return out;
             }
             SEXP nm = STRING_ELT(names, c);
             if (nm == NA_STRING || LENGTH(nm) == 0 || !zuf_utf8_valid(CHAR(nm), (size_t)LENGTH(nm))) {
+                write_refusal(out, ZNP_WRITE_NAME, c);
                 UNPROTECT(1);
-                return write_refusal(out, ZNP_WRITE_NAME, c);
+                return out;
             }
         }
         UNPROTECT(1);
