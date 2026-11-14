@@ -1,0 +1,27 @@
+source("lib.R"); suppressMessages(library(bit64))
+intmin <- as.raw(c(0,0,0,0,0,0,0,0x80))
+rec <- function(a, b, t, y) c(i64(a), i64(b), i64(t), i64(y))
+d <- "[('i', '<i8'), ('u', '<u8'), ('t', '<M8[ns]'), ('y', '<M8[Y]'), ]"
+x <- mk(H(d, "(2, 2)"), c(rec("1", "2", "1500000000", "54"), rec("9007199254740993", "4", "5", "6"), rec("7", "8", "9", "10"), rec("-11", "12", "13", "14")))
+r <- show("rec default (i8 > 2^53 at file rec 2)", npy_decode(x))
+r <- try1(npy_decode(x, int64 = "integer64")); str(r$v); print(lapply(r$v, as.character)); print(attributes(r$v$y))
+r <- try1(npy_decode(x, int64 = "integer64", datetime = "integer64")); print(lapply(r$v, class)); print(attributes(r$v$t))
+r <- try1(npy_decode(x, int64 = "integer64", order = "file")); print(lapply(r$v, as.character)); print(attr(r$v, "npy_shape"))
+# NA paths in records
+x2 <- mk(H(d, "(2,)"), c(rec("1", "2", "3", "4"), c(intmin, i64("4"), intmin, intmin)))
+show("rec INT64_MIN i8 double", npy_decode(x2)); show("rec INT64_MIN i8 integer64", npy_decode(x2, int64 = "integer64"))
+r <- try1(npy_decode(x2, int64 = "integer64", na = "allow")); print(r$v)
+# error offsets in a C-order 2-d record array: bad value at file record 2 (index 2), byte offset 128 + 32
+r <- try1(npy_decode(x)); cat("index", r$e$index, "offset", r$e$offset, "(expect index 2, offset", 128 + 32, ")\n")
+xf <- mk(H(d, "(2, 2)", TRUE), c(rec("1", "2", "1500000000", "54"), rec("9007199254740993", "4", "5", "6"), rec("7", "8", "9", "10"), rec("-11", "12", "13", "14")))
+r <- try1(npy_decode(xf)); cat("F: index", r$e$index, "offset", r$e$offset, "\n")
+r <- try1(npy_decode(x, order = "file")); cat("file: index", r$e$index, "offset", r$e$offset, "\n")
+# duplicate expanded names and odd names
+show("dup expanded", npy_decode(mk(H("[('a', '<i4', (2,)), ('a.1', '<i4')]", "(1,)"), le(1:3, 4))))
+show("names 'row.names', 'NA', ''", names(npy_decode(mk(H("[('row.names', '<i4'), ('NA', '<i4'), (' ', '<i4')]", "(1,)"), le(1:3, 4)))))
+r <- try1(npy_decode(mk(H("[('row.names', '<i4'), ('names', '<i4')]", "(2,)"), le(1:4, 4)))); print(r$v); print(attributes(r$v))
+r <- try1(npy_decode(mk(H("[('x', '<i4')]", "(0,)")))); str(r$v)
+r <- try1(npy_decode(mk(H("[('x', '<i4')]", "()"), le(5L, 4)))); str(r$v); print(attributes(r$v))
+r <- try1(npy_decode(mk(H("[('x', '<i4')]", "(1, 1)"), le(5L, 4)))); print(attributes(r$v))
+r <- try1(npy_decode(mk(H("[('x', '<i4')]", "(0, 3)")))); print(attributes(r$v))
+r <- try1(npy_decode(mk(H("[('x', '<i4')]", "(0, 3)")), order = "file")); print(attr(r$v, "npy_shape"))

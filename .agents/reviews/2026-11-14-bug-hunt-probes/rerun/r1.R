@@ -1,0 +1,7 @@
+.libPaths(c(Sys.getenv("HL"), .libPaths())); suppressMessages(library(zunpy))
+src <- Sys.getenv("HS"); source(file.path(src, "tests/testthat/helper-bytes.R"))
+cat("locale:", Sys.getlocale("LC_CTYPE"), "\n")
+x <- rawToChar(as.raw(c(0x63,0x61,0x66,0xc3,0xa9)))
+b <- npy_encode(x); cat("F1 descr", npy_header(b)$descr, "value", npy_decode(b), "\n")
+d <- setNames(data.frame(1L), x); cat("F1 field", names(npy_decode(npy_encode(d))), "\n")
+cat("F1 npz", npy_names(npy_encode(setNames(list(1L), x))), "\n")

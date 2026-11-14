@@ -1,0 +1,62 @@
+source("lib.R")
+f <- tempfile(fileext = ".npy")
+cmp <- function(label, x, ...) {
+  r1 <- try1(npy_decode(x, ...)); writeBin(x, f); r2 <- try1(npy_read(f, ...))
+  con <- file(f, "rb"); r3 <- try1(npy_read(con, ...)); close(con)
+  r4 <- try1(npy_read(paste0("file://", f), ...))
+  bits <- function(v) if (is.null(v)) NULL else list(writeBin(as.vector(v), raw()), attributes(v), typeof(v))
+  e <- function(r) if (r$ok) "OK" else paste(r$cls, r$msg, paste(names(r$e), collapse = ","), paste(format(unlist(r$e[setdiff(names(r$e), c("message", "call"))])), collapse = ","))
+  ok <- identical(bits(r1$v), bits(r2$v)) && identical(e(r1), e(r2)) && identical(r1$w, r2$w) && identical(bits(r1$v), bits(r3$v)) && identical(e(r1), e(r3)) && identical(bits(r1$v), bits(r4$v)) && identical(e(r1), e(r4)) && identical(r1$w, r4$w)
+  cat(sprintf("%-40s %s | %s %s\n", label, if (ok) "same" else "DIFF", substr(e(r1), 1, 60), if (r1$ok) paste("len", length(r1$v), "dim", paste(dim(r1$v), collapse = "x")) else ""))
+  if (!ok) { cat("   decode:", e(r1), "|", r1$w, "\n   path  :", e(r2), "|", r2$w, "\n   con   :", e(r3), "|", r3$w, "\n   url   :", e(r4), "|", r4$w, "\n"); if (r1$ok && r2$ok) { str(r1$v); str(r2$v) } }
+}
+set.seed(1)
+f8 <- function(v) writeBin(as.double(v), raw(), endian = "little")
+for (d in c("'<f8'", "'<i4'", "'<c16'")) {
+  w <- if (d == "'<c16'") 16 else if (d == "'<f8'") 8 else 4
+  dat <- function(n) as.raw(sample(0:127, n * w, TRUE))
+  for (fo in c(FALSE, TRUE)) for (ord in c("R", "file")) {
+    tag <- paste(d, if (fo) "F" else "C", ord)
+    cmp(paste(tag, "(6,)"), mk(H(d, "(6,)", fo), dat(6)), order = ord)
+    cmp(paste(tag, "(2, 3)"), mk(H(d, "(2, 3)", fo), dat(6)), order = ord)
+    cmp(paste(tag, "(2, 3, 2)"), mk(H(d, "(2, 3, 2)", fo), dat(12)), order = ord)
+    cmp(paste(tag, "()"), mk(H(d, "()", fo), dat(1)), order = ord)
+    cmp(paste(tag, "(0,)"), mk(H(d, "(0,)", fo), raw()), order = ord)
+    cmp(paste(tag, "(0, 3)"), mk(H(d, "(0, 3)", fo), raw()), order = ord)
+    cmp(paste(tag, "(3, 0, 2)"), mk(H(d, "(3, 0, 2)", fo), raw()), order = ord)
+    cmp(paste(tag, "(1, 1)"), mk(H(d, "(1, 1)", fo), dat(1)), order = ord)
+    cmp(paste(tag, "(1,)"), mk(H(d, "(1,)", fo), dat(1)), order = ord)
+  }
+  cmp(paste(d, "trailing"), c(mk(H(d, "(2,)"), dat(2)), as.raw(1)))
+  cmp(paste(d, "truncated"), mk(H(d, "(2,)"), dat(2)[-1]))
+  cmp(paste(d, "align16"), mk(H(d, "(2,)"), dat(2), align = 16))
+  cmp(paste(d, "v2"), mk(H(d, "(2,)"), dat(2), ver = 2L)); cmp(paste(d, "v3"), mk(H(d, "(2,)"), dat(2), ver = 3L))
+  cmp(paste(d, "(0, 2147483648)"), mk(H(d, "(0, 2147483648)"), raw()))
+  cmp(paste(d, "(2147483648, 0) F"), mk(H(d, "(2147483648, 0)", TRUE), raw()))
+  cmp(paste(d, "(0, 2147483647)"), mk(H(d, "(0, 2147483647)"), raw()))
+  cmp(paste(d, "(0, 2147483647) F"), mk(H(d, "(0, 2147483647)", TRUE), raw()))
+  cmp(paste(d, "(0, 2147483647) file"), mk(H(d, "(0, 2147483647)"), raw()), order = "file")
+  cmp(paste(d, "(4294967296,) trunc"), mk(H(d, "(4294967296,)"), raw()))
+  cmp(paste(d, "(0, 9223372036854775807)"), mk(H(d, "(0, 9223372036854775807)"), raw()))
+  cmp(paste(d, "(0, 9223372036854775808)"), mk(H(d, "(0, 9223372036854775808)"), raw()))
+  cmp(paste(d, "(2, 9223372036854775807)"), mk(H(d, "(2, 9223372036854775807)"), raw()))
+  cmp(paste(d, "(4294967296, 4294967296)"), mk(H(d, "(4294967296, 4294967296)"), raw()))
+  cmp(paste(d, "(-1,)"), mk(H(d, "(-1,)"), raw()))
+  cmp(paste(d, "max_dims=1 (2,3)"), mk(H(d, "(2, 3)"), dat(6)), max_dims = 1)
+  cmp(paste(d, "max_header=50"), mk(H(d, "(2,)"), dat(2)), max_header = 50)
+  cmp(paste(d, "max_size = size-1"), mk(H(d, "(2,)"), dat(2)), max_size = 128 + 2 * w - 1)
+}
+na4 <- as.raw(c(0, 0, 0, 0x80))
+cmp("i4 NA F 2x2", mk(H("'<i4'", "(2, 2)", TRUE), c(le(1:3, 4), na4)))
+cmp("i4 NA C 2x2 file", mk(H("'<i4'", "(2, 2)"), c(le(1:3, 4), na4)), order = "file")
+cmp("i4 NA allow", mk(H("'<i4'", "(2,)"), c(le(1L, 4), na4)), na = "allow")
+cmp("i4 0-d NA", mk(H("'<i4'", "()"), na4))
+cmp("f8 NA/NaN payloads", mk(H("'<f8'", "(3,)"), c(writeBin(NA_real_, raw()), as.raw(c(1,0,0,0,0,0,0xf0,0x7f)), as.raw(c(0xa2,0x07,0,0,0,0,0xf8,0xff)))))
+cmp("c16 NaN payloads", mk(H("'<c16'", "(1,)"), c(as.raw(c(1,0,0,0,0,0,0xf0,0x7f)), as.raw(c(0xa2,0x07,0,0,0,0,0xf8,0xff)))))
+cmp("f8 with int64/datetime opts", mk(H("'<f8'", "(1,)"), f8(1)), int64 = "integer64", datetime = "integer64", strings = "raw", encoding = "bytes")
+cmp("native =f8", mk(H("'=f8'", "(1,)"), f8(1))); cmp("f8 no order", mk(H("'f8'", "(1,)"), f8(1)))
+cmp("<f08", mk(H("'<f08'", "(1,)"), f8(1)))
+# bad args on fast path
+writeBin(mk(H("'<f8'", "(1,)"), f8(1)), f)
+for (a in list(list(order = "x"), list(int64 = "x"), list(na = NA), list(max_dims = -1), list(max_members = -1), list(encoding = "x"), list(bogus = 1), list(ord = "file"), list(order = "R", order = "file"))) {
+  r <- try1(do.call(npy_read, c(list(f), a))); cat("fast path arg", deparse(a), "->", if (r$ok) "OK" else r$cls, "\n") }

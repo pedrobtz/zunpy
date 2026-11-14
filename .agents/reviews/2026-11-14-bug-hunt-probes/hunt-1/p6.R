@@ -1,0 +1,46 @@
+source("h.R")
+u <- function(s) { Encoding(s) <- "UTF-8"; s }
+nms <- c("it's", "a\\b", "a\nb", u("caf\xc3\xa9"), "'\"", "a b", u("\xe6\x97\xa5"), "tab\t", "x.1", "\x7f", u("\xc2\x85"), u("\xc2\xa0"), u("\xc2\xad"), "a,b", "(", "f0")
+for (i in seq_along(nms)) {
+  df <- data.frame(1L, 2); names(df) <- c(nms[i], "z")
+  r <- T(sprintf("name %d %s", i, encodeString(nms[i])), npy_encode(df))
+  if (is.raw(r)) { writeBin(r, sprintf("out/n%02d.npy", i)); back <- names(npy_decode(r)); cat("  rt names identical:", identical(back[1], nms[i]), "\n") }
+}
+df <- data.frame(1L); names(df) <- paste(nms, collapse="|")
+# mixed frame
+df <- data.frame(i = 1:3, d = c(1.5, NA, 3), l = c(TRUE, FALSE, TRUE), s = c("a", "bbb", u("caf\xc3\xa9")),
+                 f = factor(c("x", "yy", "x")), dt = as.Date("2024-01-01") + 0:2,
+                 t = as.POSIXct("2024-01-01 00:00:00", tz = "UTC") + 0:2, z = c(1i, 2, 3),
+                 stringsAsFactors = FALSE)
+df$r <- as.raw(1:3); df$dd <- as.difftime(1:3, units = "mins"); df$i64 <- bit64::as.integer64(1:3)
+b <- npy_encode(df); writeBin(b, "out/df.npy")
+T("df hdr", npy_header(b)$descr[, 1:4])
+T("df rt", {r <- npy_decode(b, int64 = "integer64"); str(r); all.equal(r, df)})
+T("df C", {identical(npy_decode(npy_encode(df, order="C"), int64="integer64"), npy_decode(b, int64="integer64"))})
+T("df dtype", npy_header(npy_encode(df, dtype = c(i = "<i8", s = "|S", d = "<f4")))$descr$descr)
+T("df dtype dup", npy_encode(df, dtype = c(i = "<i8", i = "<i2")))
+T("df dtype unknown", npy_encode(df, dtype = c(q = "<i8")))
+T("df dtype unnamed", npy_encode(df, dtype = "<i8"))
+T("df dtype list", npy_encode(df, dtype = list(i = "<i8")))
+T("df dtype NA", npy_encode(df, dtype = c(i = NA_character_)))
+T("df 0 col", {b0 <- npy_encode(data.frame()); writeBin(b0, "out/df0.npy"); npy_header(b0)})
+T("df 0 col 3 rows", {b0 <- npy_encode(data.frame(a=1:3)[, 0, drop=FALSE]); writeBin(b0, "out/df03.npy"); str(npy_header(b0)); npy_decode(b0)})
+T("df 0 rows", {b0 <- npy_encode(data.frame(a = integer(), s = character())); writeBin(b0, "out/df00.npy"); npy_decode(b0)})
+T("df dup names", npy_encode(data.frame(a=1, a=2, check.names=FALSE)))
+T("df list col", npy_encode(data.frame(a=I(list(1,2)))))
+T("df matrix col", {d <- data.frame(a=1:2); d$m <- matrix(1:4,2); npy_encode(d)})
+T("df AsIs col", npy_encode(data.frame(a=I(c("a","b")))))
+T("df factor NA", npy_encode(data.frame(f=factor(c("a",NA)))))
+T("df NA int allow", npy_decode(npy_encode(data.frame(a=c(1L,NA), l=c(NA,TRUE)), na="allow"), na="allow"))
+T("df NA int", npy_encode(data.frame(a=c(1L,NA))))
+T("df range", npy_encode(data.frame(a=1:3, b=c(1,2,300)), dtype=c(b="|u1")))
+T("df shape", {d <- data.frame(a=1:6, b=letters[1:6]); attr(d, "npy_shape") <- c(2,3); b <- npy_encode(d); writeBin(b, "out/dfshape.npy"); writeBin(npy_encode(d, order="C"), "out/dfshapeC.npy"); r <- npy_decode(b); list(npy_header(b)$shape, npy_header(b)$fortran_order, identical(r, d), identical(npy_decode(npy_encode(d, order="C")), d))})
+T("df shape bad", {d <- data.frame(a=1:6); attr(d, "npy_shape") <- c(2,2); npy_encode(d)})
+T("df shape int", {d <- data.frame(a=1:6); attr(d, "npy_shape") <- c(2L,3L); npy_header(npy_encode(d))$shape})
+T("df shape chr", {d <- data.frame(a=1:6); attr(d, "npy_shape") <- "6"; npy_encode(d)})
+T("df shape 0", {d <- data.frame(a=integer()); attr(d, "npy_shape") <- c(0, 5); npy_header(npy_encode(d))$shape})
+T("df rownames", {d <- data.frame(a=1:2, row.names=c("x","y")); npy_decode(npy_encode(d))})
+T("tibble-like", {d <- structure(list(a=1:2), class=c("tbl_df","tbl","data.frame"), row.names=1:2); npy_decode(npy_encode(d))})
+T("df forged len", {d <- structure(list(a=1:2, b=1:3), class="data.frame", row.names=1:2); npy_encode(d)})
+T("df 1025 cols", {d <- as.data.frame(matrix(0, 1, 1025)); npy_encode(d)})
+T("df 1024 cols", {d <- as.data.frame(matrix(0, 1, 1024)); identical(npy_decode(npy_encode(d)), d)})

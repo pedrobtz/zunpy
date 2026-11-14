@@ -1,0 +1,7 @@
+source("lib.R"); suppressMessages(library(bit64))
+x <- readBin("p13/071.npy", "raw", file.size("p13/071.npy"))
+print(npy_header(x)[c("shape","fortran_order")])
+v <- npy_decode(x); vf <- npy_decode(x, order = "file")
+str(v$y); str(vf$y); print(attributes(v$y)); print(attributes(vf$y))
+idx <- as.vector(aperm(array(1:6, c(3, 2))))
+print(vf$y[idx]); print(v$y); print(attributes(vf$y[idx]))
