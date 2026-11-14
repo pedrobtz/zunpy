@@ -27,7 +27,7 @@ jobs:
       profile: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci') && 'quick' || 'full' }}
 
   valgrind:
-    uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+    uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@30da3a640992fe6d502c578a12c0f2f3aed282c1 # v1.26.0
     with:
       profile: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci') && 'quick' || 'full' }}
 
