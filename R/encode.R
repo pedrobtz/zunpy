@@ -335,10 +335,11 @@ znp_encode_records <- function(x, dtype, order, na, encoding, unit, call) {
                          call = call)
   }
   if (!is.null(dtype) && (!is.character(dtype) || is.null(names(dtype)) ||
+                            anyDuplicated(names(dtype)) ||
                             !all(names(dtype) %in% nm))) {
     znp_invalid_argument("dtype", paste(
       "`dtype` for a data frame must be a character vector named by its",
-      "columns"
+      "columns, each name once"
     ), call = call)
   }
   rows <- nrow(x)

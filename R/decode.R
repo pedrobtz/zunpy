@@ -16,11 +16,13 @@
 #' Types map as follows: `b1` to logical; `i1`, `u1`, `i2`, `u2` and `i4`
 #' to integer; `u4`, `f2`, `f4` and `f8` to double; `i8` and `u8` to double,
 #' or to `integer64` with `int64 = "integer64"`; `c8` and `c16` to complex.
-#' Every value is converted exactly or refused: an `i4` of `-2^31` is R's
+#' Every number is converted exactly or refused: an `i4` of `-2^31` is R's
 #' `NA_integer_`, so it is an error unless `na = "allow"`, and a 64-bit
 #' integer beyond `2^53` in magnitude, which a double cannot hold exactly,
-#' is an error unless `int64 = "integer64"`. Structured dtypes are not
-#' supported yet.
+#' is an error unless `int64 = "integer64"`. A structured dtype (a record
+#' array) becomes a data frame, one column per field and one per element
+#' of a subarray field (`a.1`, `a.2`, ...); one whose expanded names would
+#' repeat is refused as `zunpy_unrepresentable`.
 #'
 #' Strings: `S<n>` (bytes) and `U<n>` (code points) become character
 #' vectors in UTF-8, with the trailing NULs NumPy pads with removed. `S<n>`

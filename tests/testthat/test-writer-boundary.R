@@ -86,3 +86,14 @@ test_that("#25 native zunpy_encode refuses a shape that is not the length", {
   res <- .Call(zunpy:::zunpy_encode, 1:4, spec_i4, c(2, 2), c(0L, 0L, 0L))
   expect_identical(res$status, "ZNP_OK")
 })
+
+test_that("#25 a dtype map naming a column or element twice is refused", {
+  x <- data.frame(a = 1:2, b = 3:4)
+  expect_zunpy_error(npy_encode(x, dtype = c(a = "|u1", a = "<i2")),
+                     "zunpy_invalid_argument")
+  expect_identical(npy_header(npy_encode(x, dtype = c(a = "|u1")))$descr$descr,
+                   c("|u1", "<i4"))
+  v <- list(a = 1:2, b = 3:4)
+  expect_zunpy_error(npy_encode(v, dtype = list(a = "|u1", a = "<i2")),
+                     "zunpy_invalid_argument")
+})

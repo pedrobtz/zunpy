@@ -163,9 +163,10 @@ znp_npz_encode <- function(x, dtype, compress, args, call) {
     ), call = call)
   }
   if (!is.null(dtype) && (!is.list(dtype) || is.null(names(dtype)) ||
+                            anyDuplicated(names(dtype)) ||
                             !all(names(dtype) %in% nm))) {
     znp_invalid_argument("dtype", paste(
-      "`dtype` for a list must be a list named by its elements"
+      "`dtype` for a list must be a list named by its elements, each name once"
     ), call = call)
   }
   n <- length(x)
