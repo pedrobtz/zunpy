@@ -1,0 +1,16 @@
+source("h.R")
+cat(Sys.getlocale(), "\n")
+x <- c("café", "日本", "\U0001F600", "aé\U0001F600", "abc")
+b <- npy_encode(x)
+r <- npy_decode(b)
+print(Encoding(x)); print(Encoding(r)); print(identical(r, x)); print(r == x)
+print(lapply(r, charToRaw))
+print(lapply(x, charToRaw))
+# S dtype
+b2 <- npy_encode(x, dtype="|S")
+r2 <- npy_decode(b2); print(Encoding(r2)); print(r2 == x)
+r3 <- npy_decode(b2, encoding="latin1"); print(Encoding(r3)); print(lapply(r3, charToRaw))
+r4 <- npy_decode(b2, encoding="bytes"); print(Encoding(r4))
+# data frame
+d <- npy_decode(npy_encode(data.frame(s = x, stringsAsFactors = FALSE)))
+print(Encoding(d$s)); print(d$s == x)

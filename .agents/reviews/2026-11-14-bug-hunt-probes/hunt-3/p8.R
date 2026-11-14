@@ -1,0 +1,41 @@
+.libPaths(c("HUNT_ROOT/lib", .libPaths()))
+library(zunpy)
+bn <- "\xc3\xa9"; Encoding(bn) <- "bytes"
+print(tryCatch(npy_decode(npy_encode(setNames(list(1, 2), c("é", bn)))), error = function(e) conditionMessage(e)))
+print(tryCatch(npy_decode(npy_encode(setNames(data.frame(1, 2), c("é", bn)))), error = function(e) conditionMessage(e)))
+# npy_write sequences
+f <- tempfile(fileext = ".npy"); writeBin(as.raw(1:10), f)
+r <- tryCatch(npy_write(c(1L, NA), f), error = function(e) conditionMessage(e)); print(r); print(readBin(f, "raw", 100))
+con <- file(f, "wb"); npy_write(1:3, con); npy_write(c(1.5, 2), con); r <- tryCatch(npy_write(c(1L, NA), con), error = function(e) conditionMessage(e)); npy_write("z", con); print(isOpen(con)); close(con)
+b <- readBin(f, "raw", 1e5); print(identical(b, c(npy_encode(1:3), npy_encode(c(1.5, 2)), npy_encode("z"))))
+con <- file(f); r <- npy_write(1:3, con); print(r); print(tryCatch(isOpen(con), error = function(e) "con destroyed")); try(close(con))
+print(identical(readBin(f, "raw", 1e5), npy_encode(1:3)))
+con <- file(f, "w"); print(tryCatch(npy_write(1:3, con), error = function(e) conditionMessage(e))); close(con)
+con <- file(f, "rb"); print(tryCatch(npy_write(1:3, con), error = function(e) conditionMessage(e), warning = function(w) paste("W:", conditionMessage(w)))); close(con)
+con <- rawConnection(raw(0), "wb"); npy_write(matrix(1:4, 2), con); print(identical(rawConnectionValue(con), npy_encode(matrix(1:4, 2)))); close(con)
+con <- gzfile(f2 <- tempfile(), "wb"); npy_write(1:3, con); close(con); print(identical(readBin(gzfile(f2, "rb"), "raw", 1e4), npy_encode(1:3)))
+print(tryCatch(npy_write(1:3, tempfile(tmpdir = "/nonexistent/dir")), error = function(e) class(e)[1]))
+print(tryCatch(npy_write(1:3, c("a", "b")), error = function(e) class(e)[1]))
+print(tryCatch(npy_write(1:3, ""), error = function(e) class(e)[1]))
+print(tryCatch(npy_write(1:3, NA_character_), error = function(e) class(e)[1]))
+f3 <- tempfile(); print(tryCatch(npy_write(1:3, f3, compress = TRUE), error = function(e) conditionMessage(e))); print(file.exists(f3))
+f4 <- tempfile(fileext = ".npy"); print(npy_write(list(a = 1), f4)); print(readBin(f4, "raw", 4))  # list to .npy path
+f5 <- tempfile(fileext = ".npz"); npy_write(1:3, f5); print(readBin(f5, "raw", 6))
+od <- setwd(tempdir()); npy_write(1:3, "~tilde.npy"); print(file.exists("~tilde.npy")); setwd(od)
+print(npy_write(1:3, f <- tempfile()))
+# equivalence
+stopifnot(identical(npy_encode(1:5, dtype = "<f8"), npy_encode(as.double(1:5))))
+stopifnot(identical(npy_encode(as.double(1:5), dtype = "<i4"), npy_encode(1:5)))
+stopifnot(identical(npy_encode(factor(c("b", "a"))), npy_encode(c("b", "a"))))
+stopifnot(identical(npy_encode(structure(c(1L, 5L), class = "Date")), npy_encode(structure(c(1, 5), class = "Date"))))
+stopifnot(identical(npy_encode(c(TRUE, FALSE), dtype = "|u1"), npy_encode(as.raw(c(1, 0)))))
+x <- array(rnorm(24), c(2, 3, 4)); stopifnot(identical(npy_decode(npy_encode(x, order = "C")), x), identical(npy_decode(npy_encode(x)), x))
+stopifnot(identical(npy_encode(x, order = "C"), npy_encode(aperm(x), order = "F") |> (\(b) npy_encode(x, order = "C"))()))
+x1 <- c(a = 1, b = 2); stopifnot(identical(npy_encode(x1), npy_encode(c(1, 2))))
+m <- matrix(1:4, 2, dimnames = list(c("r", "s"), NULL)); stopifnot(identical(npy_encode(m), npy_encode(matrix(1:4, 2))))
+cat("equiv ok\n")
+# odd inputs
+for (v in list(NULL, quote(a), function() 1, new.env(), table(c(1, 1, 2)), ts(1:3), structure(1:3, class = "foo"), structure(1:3, myattr = "x"), I(1:3), as.POSIXlt(Sys.time()), numeric_version("1.2"), 1i, structure(list(), class = "data.frame"), array(1:3, 3), array(1, rep(1, 33)), array(1, rep(1, 65)), array(1L, c(1,1,1)))) {
+  r <- tryCatch(npy_encode(v), error = function(e) paste("ERR", class(e)[1], conditionMessage(e)))
+  cat(class(v)[1], ":", if (is.raw(r)) rawToChar(r[11:80]) else r, "\n")
+}

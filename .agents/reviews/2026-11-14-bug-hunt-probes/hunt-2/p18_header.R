@@ -1,0 +1,12 @@
+source("lib.R")
+for (i in c(7, 14, 21, 28, 35, 42, 98)) { h <- npy_header(sprintf("p13/%03d.npy", i)); cat(sprintf("%03d", i), "v", h$version, "itemsize", h$itemsize, "shape", h$shape, "fo", h$fortran_order, "off", h$data_offset, "\n"); d <- h$descr; d$shape <- vapply(d$shape, paste, "", collapse = "x"); print(d) }
+x <- mk(H("'<f8'", "(3, 4)"), raw(96)); str(npy_header(x)); str(npy_header(x[1:128])); str(npy_header(mk(H("'<f8'", "(4294967296, 4294967296)"))))
+str(npy_header(mk(H("'<U7'", "()"))))
+r <- try1(npy_header(mk(H("'<f8'", "(4294967296, 4294967296, 4294967296)")))); cat(r$cls, r$msg, "\n")
+r <- try1(npy_header(mk(H("'<f8'", "(9007199254740993,)")))); cat(if (r$ok) format(r$v$shape, digits = 17) else paste(r$cls, r$msg), "\n")
+r <- try1(npy_header(mk(H("'|u1'", "(9007199254740993,)")))); cat(if (r$ok) format(r$v$shape, digits = 17) else paste(r$cls, r$msg), "\n")
+r <- try1(npy_header(mk(H("'|u1'", "(9007199254740992,)")))); cat(if (r$ok) format(r$v$shape, digits = 17) else paste(r$cls, r$msg), "\n")
+r <- try1(npy_header(mk(H("'|S0'", "(9007199254740993,)")))); cat(if (r$ok) format(r$v$shape, digits = 17) else paste(r$cls, r$msg), "\n")
+r <- try1(npy_header(mk(H("'|S0'", "(9223372036854775807,)")))); cat(if (r$ok) format(r$v$shape, digits = 17) else paste(r$cls, r$msg), "\n")
+r <- try1(npy_header(mk(H("'|S0'", "(0, 9223372036854775807)")))); cat(if (r$ok) format(r$v$shape, digits = 17) else paste(r$cls, r$msg), "\n")
+r <- try1(npy_header(mk(H("'|S0'", "(9223372036854775808,)")))); cat(if (r$ok) format(r$v$shape, digits = 17) else paste(r$cls, r$msg), "\n")
