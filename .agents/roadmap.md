@@ -102,7 +102,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 **What actually happened**
 
 - The design, roadmap and `.claude/CLAUDE.md` were adopted first, in their own pull request (#1).
-- zubin's headers report `ZUBIN_VERSION "0.0.0"` and the package is `0.0.0.9000`, so `LinkingTo: zubin (>= 0.0.0.9000)` until zubin is tagged; Stage 9 raises it to `(>= 0.1.0)`.
+- zubin's headers report `ZUBIN_VERSION "0.0.0"` and the package is `0.0.0.9000`, so `LinkingTo: zubin (>= 0.0.0.9000)` until zubin is tagged; Stage 9 raises it to `(>= 0.1.0)`. *Done 2026-11-14.*
 - The `LinkingTo` proof is `src/znp_info.c`: one call into `rw.h`, `bits.h`, `number.h` and `utf8.h`, reported by `zunpy_info()` as `selftest`, and the zubin and zufast versions compiled in.
 - `knitr`, `rmarkdown` and `VignetteBuilder` wait for the vignette (Stage 8), and `reticulate` for the conformance job (Stage 2); declared early they are unused.
 - The symbol test is in `test-info.R` with zubin's `helper-abi.R`; `tools/check-symbols` is zudedup's, and was seen to reject a planted object.
@@ -370,7 +370,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 - `test-tables.R` keeps the three copies of the dtype table in step: every dtype of design §6.1 has a NumPy fixture, is named in `npy_decode()`'s documentation, and is in the design (that part skips in the built package, which has no `.agents/`).
 - Spelling: `inst/WORDLIST` and `tests/spelling.R`. `spelling::spell_check_setup()` set `Language: en-US`; it is back to `en-GB` (alignment R2), and the wordlist was rebuilt against it.
 - `cran-comments.md` lists the CI legs as test environments, as the family does.
-- **Deviation: a week of clean nightly fuzzing** was not waited for. The nightly run is scheduled (an hour per target); the pull-request runs found and fixed two real holes (Stages 2 and 3). The criterion stands for the release: Stage 9 checks the nightly history before submitting.
+- **Deviation: a week of clean nightly fuzzing** was not waited for. The nightly run is scheduled (an hour per target); the pull-request runs found and fixed two real holes (Stages 2 and 3). The criterion stands for the release: Stage 9 checks the nightly history before submitting. *Met 2026-11-14:* every scheduled run from 2026-11-03 to 2026-11-13 fuzzed both targets for the full hour without a finding (the one red night, 2026-11-08, was a Pandoc download timeout in the lint job).
 - **Deviation: `RcppCNPy`'s test files** are not committed. RcppCNPy is GPL (>= 2), and its files cannot be added to an MIT package; the case they stood for, files from a writer other than NumPy, is covered by hand-built headers (16-byte alignment, no growth spaces, double quotes, other key orders) in `test-header.R`.
 - Sanitizers, valgrind, rchk, gctorture and the forced-big-endian build run on every pull request (`native-checks.yaml`); this stage's own pull request is their run on the whole package.
 
@@ -378,7 +378,7 @@ Reusable workflows from `pedrobtz/r-actions`; the scaffold's three exist at `@v1
 
 ## Stage 9 — Release 0.1.0 · S
 
-**Status:** prepared 2026-10-08 on branch `stage-9-release` (draft pull request), waiting for zufast, zubin and zukomp on CRAN. Done on the branch: `Version: 0.1.0`, the `NEWS.md` heading, the README's `install.packages()` line; `cran-extrachecks` and `review-cran-submission` run with no finding beyond the items below. Left for when the providers are accepted: remove `Remotes:`, raise `LinkingTo: zubin (>= 0.1.0)`, reread `cran-comments.md`, rebuild and check against the CRAN tarballs (R10.3), and look at the nightly fuzz history (Stage 8 deviation).
+**Status:** ready to submit, 2026-11-14. Prepared 2026-10-08 (#24: `Version: 0.1.0`, the `NEWS.md` heading, the README's `install.packages()` line). zufast 0.1.0, zukomp 0.1.0 and zubin 0.1.0 are on CRAN (*verified 2026-11-14 against crandb*). The release review #25 (one P0, six P1) is fixed in the pull request that removes `Remotes:` and raises `LinkingTo: zubin (>= 0.1.0)`; `R CMD check --as-cran` of the built tarball against the CRAN tarballs is clean but for the new-submission NOTE (R10.3). The nightly fuzz history meets the Stage 8 criterion: both targets ran their full hour clean on every scheduled night from 2026-11-03 to 2026-11-13, once the timeout fix (#31) stopped the cancellations. Left: submit, then the exit below.
 
 **Goal:** zunpy on CRAN.
 
