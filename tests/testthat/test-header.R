@@ -124,3 +124,11 @@ test_that("an empty record list is a zero-width record", {
   expect_identical(p$itemsize, 0)
   expect_identical(p$count, 3)
 })
+
+test_that("find_bytes() finds every start, and only starts", {
+  x <- as.raw(c(1, 2, 1, 2, 1, 3))
+  expect_identical(find_bytes(x, as.raw(c(1, 2))), c(1L, 3L))
+  expect_identical(find_bytes(x, as.raw(c(1, 3))), 5L)
+  expect_identical(find_bytes(x, as.raw(c(3, 1))), integer())
+  expect_identical(find_bytes(raw(1), as.raw(c(0, 0))), integer())
+})

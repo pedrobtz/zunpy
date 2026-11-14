@@ -39,6 +39,19 @@ SEXP zunpy_zip_members(SEXP x, SEXP limits)
         UNPROTECT(2);
         return out;
     }
+    /* A name becomes an R string: one with a NUL byte, or flagged as UTF-8
+       and not, is not a name R can hold (#25). The whole table is checked
+       before anything is allocated from it. */
+    for (uint64_t i = 0; i < n; i++) {
+        int bad = memchr(m[i].name, 0, m[i].name_len) != NULL ||
+                  ((m[i].flags & 0x0800) && !zuf_utf8_valid(m[i].name, m[i].name_len));
+        if (bad) {
+            SET_VECTOR_ELT(out, 0, Rf_mkString(znp_status_name(ZNP_ERR_ZIP)));
+            SET_VECTOR_ELT(out, 1, Rf_ScalarReal((double)m[i].data_offset));
+            UNPROTECT(2);
+            return out;
+        }
+    }
     SEXP name = PROTECT(Rf_allocVector(STRSXP, (R_xlen_t)n));
     SEXP method = PROTECT(Rf_allocVector(INTSXP, (R_xlen_t)n));
     SEXP crc = PROTECT(Rf_allocVector(REALSXP, (R_xlen_t)n));
@@ -87,7 +100,7 @@ SEXP zunpy_crc32(SEXP x)
 
 /* names (UTF-8), methods, crcs and usizes per member, and payloads: the
    bytes as stored. Returns the archive as a raw vector, or R_NilValue when
-   it would not fit one. */
+   it would not fit one or a name is longer than 65,535 bytes. */
 SEXP zunpy_zip_build(SEXP names, SEXP methods, SEXP crcs, SEXP usizes,
                      SEXP payloads)
 {
@@ -98,6 +111,10 @@ SEXP zunpy_zip_build(SEXP names, SEXP methods, SEXP crcs, SEXP usizes,
         SEXP p = VECTOR_ELT(payloads, (R_xlen_t)i);
         e[i].name = CHAR(s);
         e[i].name_len = (size_t)LENGTH(s);
+        /* A ZIP entry stores the length in 16 bits; R refuses longer names
+           first, and nothing longer is written (#25). */
+        if (e[i].name_len > 0xFFFF)
+            return R_NilValue;
         e[i].method = (uint16_t)INTEGER(methods)[i];
         e[i].crc = (uint32_t)REAL(crcs)[i];
         e[i].usize = (uint64_t)REAL(usizes)[i];
