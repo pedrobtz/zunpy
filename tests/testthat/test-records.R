@@ -112,3 +112,34 @@ test_that("field names are written as Python's repr() writes them", {
   expect_match(h, "('back\\\\slash', '<f8')", fixed = TRUE)
   expect_named(npy_decode(x), names(df))
 })
+
+test_that("#25 a bad structured value is located in file order, at its byte", {
+  u4 <- function(v) put_le(raw(4), 0, v, 4)
+  bad <- u4(0x110000)  # past U+10FFFF: not a code point
+  ok <- u4(0x41)
+  locate <- function(dict, data, ...) {
+    x <- npy_header_bytes(dict, data)
+    e <- expect_zunpy_error(npy_decode(x, ...), "zunpy_invalid_error")
+    list(index = e$index, at = e$offset - (length(x) - length(data)))
+  }
+  # The second field of a one-record array: its byte, not the record's.
+  r <- locate("{'descr': [('a', '<i4'), ('b', '<U1')], 'fortran_order': False, 'shape': (1,), }",
+              c(u4(1), bad))
+  expect_identical(r, list(index = 1, at = 4))
+  # A 2x2 C-order array of records: file element 2 (0-based), read in R's
+  # order and in the file's.
+  d <- "{'descr': [('a', '<U1')], 'fortran_order': False, 'shape': (2, 2), }"
+  for (order in c("R", "file")) {
+    r <- locate(d, c(ok, ok, bad, ok), order = order)
+    expect_identical(r, list(index = 3, at = 8), info = order)
+  }
+  # Fortran order needs no permutation and gives the same answer.
+  d <- "{'descr': [('a', '<U1')], 'fortran_order': True, 'shape': (2, 2), }"
+  expect_identical(locate(d, c(ok, ok, bad, ok)), list(index = 3, at = 8))
+  # A subarray element: the byte of element 2 of the field, after padding.
+  d <- "{'descr': [('', '|V4'), ('a', '<U1', (3,))], 'fortran_order': False, 'shape': (1,), }"
+  expect_identical(locate(d, c(raw(4), ok, bad, ok)), list(index = 1, at = 8))
+  # The second record of a 1-d array, field b.
+  d <- "{'descr': [('a', '<i4'), ('b', '<U1')], 'fortran_order': False, 'shape': (2,), }"
+  expect_identical(locate(d, c(u4(1), ok, u4(2), bad)), list(index = 2, at = 12))
+})

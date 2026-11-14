@@ -56,7 +56,26 @@ typedef struct {
     znp_build_status status;
     size_t           index;     /* 0-based element, in file order */
     int              dim;       /* for a dimension fault, which one */
+    int              has_offset;/* offset is set, rather than index * itemsize */
+    uint64_t         offset;    /* bytes from the data start to the bad value */
 } znp_build_fault;
+
+/* The C-order (file) index of element r of an array in R's order: r read
+   as column-major indices over shape, then weighed by C strides. */
+static size_t c_index_of(size_t r, const uint64_t *shape, int k)
+{
+    size_t c = 0, stride = 1;
+    size_t idx[ZNP_MAX_DIMS_CAP];
+    for (int j = 0; j < k; j++) {
+        idx[j] = shape[j] ? r % (size_t)shape[j] : 0;
+        r = shape[j] ? r / (size_t)shape[j] : 0;
+    }
+    for (int j = k - 1; j >= 0; j--) {
+        c += idx[j] * stride;
+        stride *= (size_t)shape[j];
+    }
+    return c;
+}
 
 /* The zubin field type for a scalar dtype, and the R vector type it fills. */
 static int field_for(const znp_dtype *dt, const znp_opts *o, zb_field *f,
@@ -289,8 +308,10 @@ static SEXP build_records(const uint8_t *body, const znp_plan *plan,
         return R_NilValue;
     }
     /* Rows in R's order: a C-order array of records with two or more
-       dimensions is permuted record by record into one temporary first. */
-    if (plan->ndim >= 2 && !plan->fortran_order && !o->order_file && n > 0) {
+       dimensions is permuted record by record into one temporary first. A
+       fault's row is then mapped back to the file's record (#25). */
+    int permuted = plan->ndim >= 2 && !plan->fortran_order && !o->order_file && n > 0;
+    if (permuted) {
         uint8_t *tmp = (uint8_t *)(void *)R_alloc(n, rs ? rs : 1);
         znp_permute(body, tmp, rs, n, plan->shape, plan->ndim, 1);
         body = tmp;
@@ -319,9 +340,16 @@ static SEXP build_records(const uint8_t *body, const znp_plan *plan,
             m *= f->shape[d];
         SEXP descr = PROTECT(znp_dtype_sexp(&f->dtype));
         for (uint64_t e = 0; e < m; e++, c++) {
-            const uint8_t *base = body + f->offset + e * f->dtype.itemsize;
+            size_t at = (size_t)f->offset + (size_t)e * (size_t)f->dtype.itemsize;
+            const uint8_t *base = body + at;
             SEXP col = read_column(base, n, rs, &f->dtype, o, fault);
             if (fault->status != ZNP_BUILD_OK) {
+                /* The record in file order, and the byte of this field (or
+                   subarray element) in it. */
+                if (permuted)
+                    fault->index = c_index_of(fault->index, plan->shape, plan->ndim);
+                fault->has_offset = 1;
+                fault->offset = (uint64_t)fault->index * rs + at;
                 fault->dim = -1;
                 UNPROTECT(4);
                 return R_NilValue;
@@ -355,6 +383,8 @@ static SEXP build(const uint8_t *data, const znp_plan *plan, const znp_opts *o,
     fault->status = ZNP_BUILD_OK;
     fault->index = 0;
     fault->dim = -1;
+    fault->has_offset = 0;
+    fault->offset = 0;
 
     /* R's dim is integer; a vector may be long (design 6.2). */
     if (plan->ndim >= 2)
@@ -463,7 +493,9 @@ SEXP zunpy_decode(SEXP x, SEXP limits, SEXP opts)
     SEXP value = PROTECT(build(data, &plan, &o, &bf));
     SET_VECTOR_ELT(out, 0, Rf_mkString(build_status_name(bf.status)));
     if (bf.status != ZNP_BUILD_OK) {
-        double off = (double)plan.data_offset + (double)bf.index * (double)plan.itemsize;
+        double off = (double)plan.data_offset +
+                     (bf.has_offset ? (double)bf.offset
+                                    : (double)bf.index * (double)plan.itemsize);
         SET_VECTOR_ELT(out, 1, Rf_ScalarReal(bf.dim >= 0 ? (double)plan.header_offset : off));
         SET_VECTOR_ELT(out, 2, Rf_ScalarReal(bf.dim >= 0 ? NA_REAL : (double)bf.index + 1));
         SET_VECTOR_ELT(out, 7, Rf_ScalarInteger(bf.dim >= 0 ? bf.dim + 1 : NA_INTEGER));
