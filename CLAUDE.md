@@ -5,15 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Shared conventions
 
-The portfolio's shared rules are synced into `.claude/shared/` from
-`pedrobtz/packages:claude/shared/`. Never edit them here. Where this file and
-a shared file disagree, this file wins for this package.
+<!-- r-skills: shared-rules -->
 
-@.claude/shared/workflow.md
-@.claude/shared/r-package.md
-@.claude/shared/ci.md
-@.claude/shared/correctness.md
-@.claude/shared/assurance.md
+The portfolio's shared rules (`workflow`, `r-package`, `ci`, `native-code`,
+`correctness`, `assurance`) come from the
+[r-skills](https://github.com/pedrobtz/r-skills) plugin's `rules/`, loaded at
+session start because of the marker above. Never copy them here. Where this
+file and a shared rule disagree, this file wins for this package. Cloud
+sessions do not load the plugin and run without them.
 
 ## What this is
 
@@ -84,7 +83,7 @@ and identical to NumPy's; changing the header layout, padding, version choice or
 
 ## Commands
 
-The everyday commands are in `.claude/shared/r-package.md`. Run R CMD check as
+The everyday commands are in the shared `r-package.md` rules. Run R CMD check as
 CRAN does, with the system-clock check off:
 
 ```sh
@@ -240,7 +239,7 @@ one raw vector the same way.
 
 ## Editing rules
 
-These add to, or deviate from, `.claude/shared/r-package.md`:
+These add to, or deviate from, the shared `r-package.md` rules:
 
 - **There is no `README.Rmd`; edit `README.md` directly** and run its example.
 - The vignette is `vignettes/zunpy.Rmd`; a chunk that needs a `Suggests` package
