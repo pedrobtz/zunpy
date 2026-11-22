@@ -21,23 +21,23 @@ concurrency:
 
 jobs:
   sanitizers:
-    uses: pedrobtz/r-actions/.github/workflows/sanitizers.yml@ae59a2805e622e9ba0f3e902bc5f39eba33c6670 # v1.45.1
+    uses: pedrobtz/r-actions/.github/workflows/sanitizers.yml@v1
     with:
       asan: true
       profile: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci') && 'quick' || 'full' }}
 
   valgrind:
-    uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+    uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@v1
     with:
       profile: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci') && 'quick' || 'full' }}
 
   lto:
-    uses: pedrobtz/r-actions/.github/workflows/lto.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+    uses: pedrobtz/r-actions/.github/workflows/lto.yml@v1
 
   # ZUNPY_SKIP_HEAVY skips the large-input cases: they test values, not
   # PROTECT discipline, and under gctorture they would take hours.
   gctorture:
-    uses: pedrobtz/r-actions/.github/workflows/gctorture.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+    uses: pedrobtz/r-actions/.github/workflows/gctorture.yml@v1
     with:
       profile: ${{ github.event_name == 'pull_request' && 'quick' || 'full' }}
       timeout-minutes: 240
@@ -47,7 +47,7 @@ jobs:
   # Blocking from the first run: the C code is new, so any finding is ours.
   # zubin and zufast (LinkingTo) come from CRAN, as the rchk image installs.
   rchk:
-    uses: pedrobtz/r-actions/.github/workflows/rchk.yml@bdfde5edd37f25b33af142a4a881585e77bda3c2 # v1.22.0
+    uses: pedrobtz/r-actions/.github/workflows/rchk.yml@v1
     with:
       fail-on-findings: true
 
