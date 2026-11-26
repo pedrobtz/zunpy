@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       - run: tools/check-fixtures
 
   # Roadmap Stage 3: R writes one file per value of design section 7.1 and
@@ -41,7 +41,7 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           dependencies: '"hard"'
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       - name: R writes, NumPy reads
         run: |
           mkdir -p "$RUNNER_TEMP/lib"
